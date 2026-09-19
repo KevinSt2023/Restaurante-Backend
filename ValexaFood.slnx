@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="ValexaFood.API/ValexaFood.API.csproj" />
+  <Project Path="ValexaFood.Application/ValexaFood.Application.csproj" />
+  <Project Path="ValexaFood.Domain/ValexaFood.Domain.csproj" />
+  <Project Path="ValexaFood.Infrastructure/ValexaFood.Infrastructure.csproj" />
+</Solution>

@@ -1,0 +1,153 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-dev",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd",
+        "/d",
+        "K:\\PROYECTO DULCERIA\\Dulceria_Frontend\\DulcesERP_Frontend",
+        "&&",
+        "npx",
+        "ng",
+        "serve",
+        "--port",
+        "4200"
+      ],
+      "port": 4200
+    },
+    {
+      "name": "backend-dev",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd",
+        "/d",
+        "K:\\PROYECTO DULCERIA\\Dulceria\\DulcesERP.API",
+        "&&",
+        "dotnet",
+        "run"
+      ],
+      "port": 9001
+    },
+    {
+      "name": "pharmexa-frontend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd",
+        "/d",
+        "K:\\PROYECTO FARMACIA\\Pharmexa_Frontend",
+        "&&",
+        "npx",
+        "ng",
+        "serve",
+        "--port",
+        "4300"
+      ],
+      "port": 4300
+    },
+    {
+      "name": "pharmexa-backend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd",
+        "/d",
+        "K:\\PROYECTO FARMACIA\\Pharmexa\\Pharmexa.API",
+        "&&",
+        "dotnet",
+        "run"
+      ],
+      "port": 9101
+    },
+    {
+      "name": "pharmexa-backend-qa",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd",
+        "/d",
+        "K:\\PROYECTO FARMACIA\\Pharmexa\\Pharmexa.API",
+        "&&",
+        "dotnet",
+        "build",
+        "-nologo",
+        "-v",
+        "q",
+        "-o",
+        "C:\\Users\\XXDOMM~1\\AppData\\Local\\Temp\\pharmexa_api_qa",
+        "&&",
+        "dotnet",
+        "C:\\Users\\XXDOMM~1\\AppData\\Local\\Temp\\pharmexa_api_qa\\Pharmexa.API.dll",
+        "--environment",
+        "Development",
+        "--urls",
+        "http://localhost:9111"
+      ],
+      "port": 9111
+    },
+    {
+      "name": "pharmexa-backend-qa-mock",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd",
+        "/d",
+        "K:\\PROYECTO FARMACIA\\Pharmexa\\Pharmexa.API",
+        "&&",
+        "dotnet",
+        "build",
+        "-nologo",
+        "-v",
+        "q",
+        "-o",
+        "C:\\Users\\XXDOMM~1\\AppData\\Local\\Temp\\pharmexa_api_qa",
+        "&&",
+        "dotnet",
+        "C:\\Users\\XXDOMM~1\\AppData\\Local\\Temp\\pharmexa_api_qa\\Pharmexa.API.dll",
+        "--environment",
+        "Development",
+        "--urls",
+        "http://localhost:9112",
+        "--Decolecta:BaseUrl=http://127.0.0.1:9198"
+      ],
+      "port": 9112
+    },
+    {
+      "name": "valexa-backend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd",
+        "/d",
+        "K:\\PROYECTO RESTAURANTES\\ValexaFood\\ValexaFood.API",
+        "&&",
+        "dotnet",
+        "run",
+        "--launch-profile",
+        "http"
+      ],
+      "port": 9201
+    },
+    {
+      "name": "valexa-frontend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd",
+        "/d",
+        "K:\\PROYECTO RESTAURANTES\\ValexaFood_Frontend",
+        "&&",
+        "npx",
+        "ng",
+        "serve",
+        "--port",
+        "4400"
+      ],
+      "port": 4400
+    }
+  ]
+}
