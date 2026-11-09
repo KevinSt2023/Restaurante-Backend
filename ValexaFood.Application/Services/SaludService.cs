@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using ValexaFood.Application.Common;
 using ValexaFood.Domain.Entities;
 using ValexaFood.Infrastructure.Context;
@@ -124,7 +124,8 @@ public class SaludService
             if (t.Plan != null && t.Activo)
             {
                 var probs = LimitePlan.Problemas(u, t.Plan.MaxSucursales, t.Plan.MaxUsuarios,
-                    cupos.Where(c => c.PlanId == t.PlanId).Select(c => (c.RolId, c.Maximo)), roles);
+                    cupos.Where(c => c.PlanId == t.PlanId).Select(c => (c.RolId, c.Maximo, c.PorSucursal)), roles,
+                    t.Plan.PrecioSucursalAdicional);
                 if (probs.Count > 0)
                     Uso(Atencion, "Excede su plan", string.Join("; ", probs) + ".", "Ofrécele un plan mayor.");
                 else if (t.Plan.MaxUsuarios > 0 && u.UsuariosOperativos >= t.Plan.MaxUsuarios)

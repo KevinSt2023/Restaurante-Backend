@@ -6,7 +6,7 @@ using ValexaFood.Infrastructure.Sesion;
 
 namespace ValexaFood.Application.Services;
 
-public record BitacoraDto(long BitacoraId, int? TenantId, string? Empresa, int? UsuarioId, string UsuarioNombre,
+public record BitacoraDto(long BitacoraId, int? TenantId, int? SucursalId, string? Empresa, int? UsuarioId, string UsuarioNombre,
     int? RolId, string Accion, string Entidad, string? EntidadId, string Detalle, string? Ip, DateTime Fecha);
 
 public record BitacoraPaginaDto(List<BitacoraDto> Items, int Total, int Pagina, int TamanoPagina);
@@ -38,6 +38,7 @@ public class BitacoraService
         _db.Bitacora.Add(new Bitacora
         {
             TenantId = tenantAfectado,
+            SucursalId = tenantAfectado == _sesion.TenantId ? _sesion.SucursalId : null,
             UsuarioId = usuarioId,
             UsuarioNombre = nombre,
             RolId = _sesion.RolId >= 0 ? _sesion.RolId : null,
@@ -75,7 +76,7 @@ public class BitacoraService
         var nombres = await _db.Tenants.AsNoTracking().Where(t => ids.Contains(t.TenantId))
             .ToDictionaryAsync(t => t.TenantId, t => t.NombreComercial);
 
-        return new(filas.Select(b => new BitacoraDto(b.BitacoraId, b.TenantId,
+        return new(filas.Select(b => new BitacoraDto(b.BitacoraId, b.TenantId, b.SucursalId,
             b.TenantId.HasValue ? nombres.GetValueOrDefault(b.TenantId.Value) : null,
             b.UsuarioId, b.UsuarioNombre, b.RolId, b.Accion, b.Entidad, b.EntidadId, b.Detalle, b.Ip, b.Fecha)).ToList(),
             total, pagina, tamano);

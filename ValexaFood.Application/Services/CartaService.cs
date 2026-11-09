@@ -50,7 +50,8 @@ public record MarcarAgotadoDto(int SucursalId, int ProductoId, bool Agotado);
 public record MenuOpcionDto(int OpcionId, string Nombre, decimal PrecioExtra);
 public record MenuGrupoDto(int GrupoId, string Nombre, int Minimo, int Maximo, List<MenuOpcionDto> Opciones);
 public record MenuVarianteDto(int VarianteId, string Nombre, decimal Precio);
-public record MenuComboOpcionDto(int ProductoId, string Nombre, decimal PrecioExtra, bool Agotado);
+public record MenuComboOpcionDto(int ProductoId, string Nombre, decimal PrecioExtra, bool Agotado,
+    List<MenuVarianteDto> Variantes, List<MenuGrupoDto> Grupos);
 public record MenuComboGrupoDto(int ComboGrupoId, string Nombre, int Cantidad, List<MenuComboOpcionDto> Opciones);
 public record MenuProductoDto(int ProductoId, string Nombre, string? Codigo, string Tipo, string? Descripcion, decimal Precio,
     string? Imagen, string[] Etiquetas, int? AreaId, bool Agotado, List<MenuVarianteDto> Variantes, List<MenuGrupoDto> Grupos,
@@ -710,6 +711,8 @@ public class CartaService
             .Include(p => p.Categoria).Include(p => p.Variantes).Include(p => p.Sucursales)
             .Include(p => p.Grupos).ThenInclude(g => g.Grupo).ThenInclude(g => g!.Opciones)
             .Include(p => p.ComboGrupos).ThenInclude(g => g.Opciones).ThenInclude(o => o.Producto)
+            .Include(p => p.ComboGrupos).ThenInclude(g => g.Opciones).ThenInclude(o => o.Producto).ThenInclude(p => p!.Variantes)
+            .Include(p => p.ComboGrupos).ThenInclude(g => g.Opciones).ThenInclude(o => o.Producto).ThenInclude(p => p!.Grupos).ThenInclude(g => g.Grupo).ThenInclude(g => g!.Opciones)
             .AsSplitQuery()
             .Where(p => p.Activo && p.Categoria!.Activo && p.Sucursales.Any(s => s.SucursalId == sid))
             .Where(p => combos || p.Tipo != TiposProducto.Combo)
@@ -717,21 +720,38 @@ public class CartaService
 
         // Agotado de los componentes: un combo sin ninguna opción disponible en un grupo, se agota.
         var agotadosHoy = await _db.ProductoSucursales.Where(x => x.SucursalId == sid && x.AgotadoFecha == hoy).Select(x => x.ProductoId).ToListAsync();
-        var vendibles = await _db.ProductoSucursales.Where(x => x.SucursalId == sid).Select(x => x.ProductoId).ToListAsync();
+        var vendibles = await _db.Productos
+            .Where(p => p.Activo && p.Categoria!.Activo && p.Sucursales.Any(s => s.SucursalId == sid))
+            .Select(p => p.ProductoId).ToListAsync();
 
         MenuProductoDto Mapear(Producto p)
         {
             var ps = p.Sucursales.First(s => s.SucursalId == sid);
+            List<MenuGrupoDto> GruposDe(Producto producto) => producto.Grupos.Where(g => g.Grupo!.Activo).OrderBy(g => g.Orden)
+                .Select(g => new MenuGrupoDto(g.GrupoId, g.Grupo!.Nombre, g.Grupo.Minimo, g.Grupo.Maximo,
+                    g.Grupo.Opciones.Where(o => o.Activo).OrderBy(o => o.Orden)
+                        .Select(o => new MenuOpcionDto(o.OpcionId, o.Nombre, o.PrecioExtra)).ToList()))
+                .Where(g => g.Opciones.Count > 0 || g.Minimo > 0).ToList();
             var comboGrupos = !combos ? [] : p.ComboGrupos.OrderBy(g => g.Orden).Select(g => new MenuComboGrupoDto(g.ComboGrupoId, g.Nombre, g.Cantidad,
                 g.Opciones.Where(o => o.Producto!.Activo && vendibles.Contains(o.ProductoId)).OrderBy(o => o.Orden)
-                    .Select(o => new MenuComboOpcionDto(o.ProductoId, o.Producto!.Nombre, o.PrecioExtra, agotadosHoy.Contains(o.ProductoId))).ToList())).ToList();
-            var agotado = ps.AgotadoFecha == hoy || comboGrupos.Any(g => g.Opciones.All(o => o.Agotado));
+                    .Select(o =>
+                    {
+                        var gruposComponente = GruposDe(o.Producto!);
+                        var sinModificadoresDisponibles = gruposComponente.Any(g => g.Opciones.Count < g.Minimo);
+                        return new MenuComboOpcionDto(o.ProductoId, o.Producto!.Nombre, o.PrecioExtra,
+                            agotadosHoy.Contains(o.ProductoId) || sinModificadoresDisponibles,
+                            o.Producto.Variantes.Where(v => v.Activo).OrderBy(v => v.Orden)
+                                .Select(v => new MenuVarianteDto(v.VarianteId, v.Nombre, v.Precio)).ToList(),
+                            gruposComponente);
+                    }).ToList())).ToList();
+            var gruposProducto = GruposDe(p);
+            var sinModificadoresDisponiblesProducto = gruposProducto.Any(g => g.Opciones.Count < g.Minimo);
+            var agotado = ps.AgotadoFecha == hoy || sinModificadoresDisponiblesProducto
+                || comboGrupos.Any(g => g.Opciones.Count(o => !o.Agotado) < g.Cantidad);
             return new MenuProductoDto(p.ProductoId, p.Nombre, p.Codigo, p.Tipo, p.Descripcion, ps.Precio ?? p.Precio, p.Imagen, p.Etiquetas,
                 p.AreaId, agotado,
                 !combos ? [] : p.Variantes.Where(v => v.Activo).OrderBy(v => v.Orden).Select(v => new MenuVarianteDto(v.VarianteId, v.Nombre, v.Precio)).ToList(),
-                !combos ? [] : p.Grupos.Where(g => g.Grupo!.Activo).OrderBy(g => g.Orden).Select(g => new MenuGrupoDto(g.GrupoId, g.Grupo!.Nombre,
-                    g.Grupo.Minimo, g.Grupo.Maximo, g.Grupo.Opciones.Where(o => o.Activo).OrderBy(o => o.Orden)
-                        .Select(o => new MenuOpcionDto(o.OpcionId, o.Nombre, o.PrecioExtra)).ToList())).Where(g => g.Opciones.Count > 0).ToList(),
+                !combos ? [] : gruposProducto,
                 comboGrupos);
         }
 

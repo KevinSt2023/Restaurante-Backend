@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using ValexaFood.Application.Common;
 using ValexaFood.Domain.Entities;
 using ValexaFood.Infrastructure.Context;
@@ -15,7 +15,7 @@ public record EmpresaListaDto(int TenantId, string NombreComercial, string? Razo
     string EstadoCobranza, int Sucursales, int MaxSucursales, int Usuarios, int MaxUsuarios, bool Excede,
     DateTime? UltimoAcceso, DateTime CreatedAt);
 
-public record UsoRolDto(int RolId, string Rol, int Usados, int? Maximo, bool Permitido);
+public record UsoRolDto(int RolId, string Rol, int Usados, int? Maximo, bool Permitido, bool PorSucursal = false);
 public record SucursalDto(int SucursalId, string Nombre, string? Direccion, string? Telefono, bool EsPrincipal, bool Activo,
     int Usuarios, DateTime CreatedAt);
 public record UsuarioEmpresaDto(int UsuarioId, string Nombre, string Email, string? Dni, string? Telefono, int RolId,
@@ -93,7 +93,8 @@ public class EmpresaService
             var u = uso.GetValueOrDefault(t.TenantId) ?? new UsoEmpresa(t.TenantId, 0, [], false);
             int? dias = t.PlanFechaVencimiento.HasValue ? t.PlanFechaVencimiento.Value.DayNumber - hoy.DayNumber : null;
             var excede = t.Plan != null && LimitePlan.Problemas(u, t.Plan.MaxSucursales, t.Plan.MaxUsuarios,
-                cupos.Where(c => c.PlanId == t.PlanId).Select(c => (c.RolId, c.Maximo)), roles).Count > 0;
+                cupos.Where(c => c.PlanId == t.PlanId).Select(c => (c.RolId, c.Maximo, c.PorSucursal)), roles,
+                t.Plan.PrecioSucursalAdicional).Count > 0;
             return new EmpresaListaDto(t.TenantId, t.NombreComercial, t.RazonSocial, t.Ruc, t.TipoServicio, t.Telefono,
                 t.PlanId, t.Plan?.Nombre, t.Activo, t.PlanFechaVencimiento, dias,
                 SuscripcionService.Estado(t, dias, porVencer), u.Sucursales, t.Plan?.MaxSucursales ?? 0,
@@ -109,17 +110,14 @@ public class EmpresaService
         var hoy = DiaLima.Hoy();
         int? dias = t.PlanFechaVencimiento.HasValue ? t.PlanFechaVencimiento.Value.DayNumber - hoy.DayNumber : null;
         var uso = (await _limite.UsoAsync([id]))[id];
-        var roles = await _db.Roles.AsNoTracking().Where(r => r.RolId >= RolIds.Cajero).OrderBy(r => r.Orden).ToListAsync();
+        var roles = await _db.Roles.AsNoTracking().Where(r => r.OcupaCupo).OrderBy(r => r.Orden).ToListAsync();
         var plan = t.PlanId.HasValue ? await _planes.ObtenerAsync(t.PlanId.Value) : null;
 
-        var usoPorRol = roles.Select(r =>
-        {
-            var cupo = plan?.Cupos.FirstOrDefault(c => c.RolId == r.RolId);
-            return new UsoRolDto(r.RolId, r.Nombre, uso.UsuariosPorRol.GetValueOrDefault(r.RolId), cupo?.Maximo, cupo != null);
-        }).ToList();
+        var usoPorRol = UsoPorRol(roles, plan, uso);
 
         var excesos = plan == null ? [] : LimitePlan.Problemas(uso, plan.MaxSucursales, plan.MaxUsuarios,
-            plan.Cupos.Select(c => (c.RolId, c.Maximo)), roles.ToDictionary(r => r.RolId, r => r.Nombre));
+            plan.Cupos.Select(c => (c.RolId, c.Maximo, c.PorSucursal)), roles.ToDictionary(r => r.RolId, r => r.Nombre),
+            plan.PrecioSucursalAdicional);
 
         var sucursales = await _db.Sucursales.IgnoreQueryFilters().AsNoTracking().Where(s => s.TenantId == id)
             .OrderByDescending(s => s.EsPrincipal).ThenBy(s => s.Nombre).ToListAsync();
@@ -137,7 +135,11 @@ public class EmpresaService
             usuarios, ultimoAcceso, Documento.EsCelularPeru(t.Telefono));
     }
 
-    private async Task<List<UsuarioEmpresaDto>> UsuariosAsync(int tenantId)
+    /// <summary>
+    /// El equipo de una empresa. Lo usan el SuperAdmin (ficha) y el panel del
+    /// Administrador del restaurante, que ve y gestiona solo a su propia gente.
+    /// </summary>
+    public async Task<List<UsuarioEmpresaDto>> UsuariosAsync(int tenantId)
     {
         var ahora = DateTime.UtcNow;
         return (await _db.Usuarios.IgnoreQueryFilters().AsNoTracking().Include(u => u.Rol).Include(u => u.Sucursal)
@@ -297,7 +299,8 @@ public class EmpresaService
 
         var uso = (await _limite.UsoAsync([id]))[id];
         var problemas = LimitePlan.Problemas(uso, nuevo.MaxSucursales, nuevo.MaxUsuarios,
-            nuevo.Cupos.Select(c => (c.RolId, c.Maximo)), await _limite.NombresRolAsync());
+            nuevo.Cupos.Select(c => (c.RolId, c.Maximo, c.PorSucursal)), await _limite.NombresRolAsync(),
+            nuevo.PrecioSucursalAdicional);
         if (problemas.Count > 0)
             throw new ReglaNegocioException(
                 $"{t.NombreComercial} no entra en el plan {nuevo.Nombre}: {string.Join("; ", problemas)}. Desactiva lo que sobra primero.",
@@ -411,7 +414,11 @@ public class EmpresaService
         if (!dto.Activo)
         {
             if (s.EsPrincipal) throw new ReglaNegocioException("La sucursal principal no se desactiva: marca otra como principal primero.");
-            var asignados = await _db.Usuarios.IgnoreQueryFilters().CountAsync(u => u.SucursalId == sucursalId && u.Activo);
+            var asignados = await _db.UsuarioSucursales.IgnoreQueryFilters()
+                .Where(a => a.TenantId == tenantId && a.SucursalId == sucursalId)
+                .Join(_db.Usuarios.IgnoreQueryFilters().Where(u => u.Activo && u.TenantId == tenantId),
+                    a => a.UsuarioId, u => u.UsuarioId, (a, u) => a.UsuarioId)
+                .Distinct().CountAsync();
             if (asignados > 0)
                 throw new ReglaNegocioException($"La sucursal tiene {asignados} usuario(s) activo(s): muévelos o desactívalos primero.");
         }
@@ -433,6 +440,38 @@ public class EmpresaService
         await _bitacora.AgregarAsync(tenantId, "SUCURSAL_PRINCIPAL", "Sucursal", sucursalId, $"{s.Nombre} es ahora la sucursal principal.");
         await _db.SaveChangesAsync();
         return await DetalleAsync(tenantId);
+    }
+
+    /// <summary>
+    /// Cupo por rol: cuántos permite el plan y cuántos hay ya.
+    /// Si el cupo es por local, "usados" depende de quién pregunta: con una
+    /// sucursal, los de ESA sede (el dueño quiere saber si puede contratar aquí);
+    /// sin ella, el local que más tiene (el SuperAdmin quiere saber si la empresa
+    /// se pasó del plan).
+    /// </summary>
+    private static List<UsoRolDto> UsoPorRol(List<Rol> roles, PlanDto? plan, UsoEmpresa uso, int? sucursalId = null) =>
+        roles.Select(r =>
+        {
+            var cupo = plan?.Cupos.FirstOrDefault(c => c.RolId == r.RolId);
+            var usados = cupo?.PorSucursal == true
+                ? uso.EnLocal(r.RolId, sucursalId)
+                : uso.UsuariosPorRol.GetValueOrDefault(r.RolId);
+            return new UsoRolDto(r.RolId, r.Nombre, usados, cupo?.Maximo, cupo != null, cupo?.PorSucursal ?? false);
+        }).ToList();
+
+    /// <summary>
+    /// Los roles que esta empresa puede contratar con su plan, con cupo y uso.
+    /// Lo consumen la ficha del SuperAdmin y la pantalla de equipo del
+    /// Administrador: una sola cuenta, imposible que se desincronicen.
+    /// </summary>
+    public async Task<List<UsoRolDto>> RolesContratablesAsync(int tenantId, int? sucursalId = null)
+    {
+        var t = await _db.Tenants.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId)
+            ?? throw ReglaNegocioException.NoEncontrado("Empresa");
+        var uso = (await _limite.UsoAsync([tenantId]))[tenantId];
+        var plan = t.PlanId.HasValue ? await _planes.ObtenerAsync(t.PlanId.Value) : null;
+        var roles = await _db.Roles.AsNoTracking().Where(r => r.OcupaCupo).OrderBy(r => r.Orden).ToListAsync();
+        return UsoPorRol(roles, plan, uso, sucursalId);
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -460,7 +499,8 @@ public class EmpresaService
     public async Task<PasswordTemporalDto?> CrearUsuarioAsync(int tenantId, UsuarioGuardarDto dto)
     {
         await TenantAsync(tenantId);
-        if (dto.RolId is < RolIds.Administrador or > RolIds.Delivery) throw new ReglaNegocioException("Rol no válido.");
+        if (dto.RolId != RolIds.Administrador && !RolIds.EsOperativo(dto.RolId))
+            throw new ReglaNegocioException("Rol no válido.");
         if (dto.RolId == RolIds.Administrador && await _db.Usuarios.IgnoreQueryFilters()
                 .AnyAsync(u => u.TenantId == tenantId && u.RolId == RolIds.Administrador && u.Activo))
             throw new ReglaNegocioException("La empresa ya tiene un Administrador activo: el Administrador es único.");
@@ -484,7 +524,15 @@ public class EmpresaService
         _db.Usuarios.Add(u);
         var rol = await _db.Roles.Where(r => r.RolId == dto.RolId).Select(r => r.Nombre).FirstAsync();
         await _bitacora.AgregarAsync(tenantId, "USUARIO_CREADO", "Usuario", null, $"Nuevo usuario {nombre} ({email}) como {rol}.");
-        await _db.SaveChangesAsync(); // el trigger de la base aplica el cupo del plan
+        await _db.SaveChangesAsync(); // obtiene usuario_id; el trigger aplica el cupo del plan
+        if (RolIds.EsOperativo(dto.RolId))
+        {
+            _db.UsuarioSucursales.Add(new UsuarioSucursal
+            {
+                TenantId = tenantId, UsuarioId = u.UsuarioId, SucursalId = sucursal, AsignadoEn = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+        }
         return temporal == null ? null : new PasswordTemporalDto(temporal,
             $"Entrégale a {nombre} esta contraseña temporal: la cambiará en su primer ingreso.");
     }
@@ -501,8 +549,8 @@ public class EmpresaService
         {
             if (u.RolId == RolIds.Administrador)
                 throw new ReglaNegocioException("El Administrador no cambia de rol: crea otro Administrador tras desactivar a este.");
-            if (dto.RolId is < RolIds.Cajero or > RolIds.Delivery)
-                throw new ReglaNegocioException("Solo se puede cambiar entre roles operativos (Cajero, Cocinero, Mesero, Delivery).");
+            if (!RolIds.EsOperativo(dto.RolId))
+                throw new ReglaNegocioException("Solo se puede cambiar entre roles operativos (Gerente de local, Cajero, Cocinero, Mesero, Delivery).");
         }
 
         var cambios = new List<string>();
@@ -518,6 +566,16 @@ public class EmpresaService
         u.Telefono = Documento.NormalizarTelefono(dto.Telefono);
         u.RolId = dto.RolId;
         u.SucursalId = sucursal;
+        if (RolIds.EsOperativo(u.RolId))
+        {
+            var asignaciones = await _db.UsuarioSucursales.Where(x => x.UsuarioId == u.UsuarioId).ToListAsync();
+            _db.UsuarioSucursales.RemoveRange(asignaciones.Where(x => x.SucursalId != sucursal));
+            if (asignaciones.All(x => x.SucursalId != sucursal))
+                _db.UsuarioSucursales.Add(new UsuarioSucursal
+                {
+                    TenantId = tenantId, UsuarioId = u.UsuarioId, SucursalId = sucursal, AsignadoEn = DateTime.UtcNow
+                });
+        }
         // Un cambio de rol o de correo invalida los permisos del token vigente.
         if (cierraSesion) await _auth.CerrarSesionesAsync(u.UsuarioId, u);
         if (cambios.Count > 0)

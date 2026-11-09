@@ -1,4 +1,4 @@
-namespace ValexaFood.Domain.Entities;
+﻿namespace ValexaFood.Domain.Entities;
 
 // Toda tabla que pertenece a una empresa hereda de aquí: el contexto le aplica
 // el filtro por empresa y estampa el tenant_id al insertar.
@@ -15,8 +15,13 @@ public static class RolIds
     public const int Cocinero = 3;
     public const int Mesero = 4;
     public const int Delivery = 5;
+    /// <summary>Jefe de un local: manda en su sede, no en la empresa.</summary>
+    public const int GerenteLocal = 6;
 
-    public static readonly int[] Operativos = [Cajero, Cocinero, Mesero, Delivery];
+    /// <summary>Roles que ocupan cupo del plan y se contratan por empresa.</summary>
+    public static readonly int[] Operativos = [Cajero, Cocinero, Mesero, Delivery, GerenteLocal];
+
+    public static bool EsOperativo(int rolId) => Operativos.Contains(rolId);
 }
 
 public class Rol
@@ -62,10 +67,17 @@ public class Plan
     public string Descripcion { get; set; } = "";
     public decimal PrecioMensual { get; set; }
     public decimal? PrecioAnual { get; set; }
+    /// <summary>Lo que se suma al mes por cada local por encima de los incluidos. 0 = no se cobran aparte.</summary>
+    public decimal PrecioSucursalAdicional { get; set; }
+    /// <summary>Lo mismo para el cobro de 12 meses. null = se cobra el mensual por doce.</summary>
+    public decimal? PrecioSucursalAdicionalAnual { get; set; }
+    /// <summary>Locales incluidos en el precio base. 0 = ilimitados y sin cargo por local.</summary>
     public int MaxSucursales { get; set; }
     public int MaxUsuarios { get; set; }
     public int[] AdminAcumula { get; set; } = [];
     public bool Destacado { get; set; }
+    /// <summary>El precio se acuerda con el cliente; la vitrina muestra "A cotizar".</summary>
+    public bool ACotizar { get; set; }
     public int Orden { get; set; }
     public bool Activo { get; set; } = true;
     public DateTime CreatedAt { get; set; }
@@ -79,6 +91,8 @@ public class PlanRolCupo
     public int PlanId { get; set; }
     public int RolId { get; set; }
     public int Maximo { get; set; }
+    /// <summary>true = el tope se cuenta DENTRO de cada local ("2 meseros por local").</summary>
+    public bool PorSucursal { get; set; }
 }
 
 public class PlanFuncion
@@ -134,6 +148,64 @@ public class Sucursal : TenantEntity
     public bool EsPrincipal { get; set; }
     public bool Activo { get; set; } = true;
     public DateTime CreatedAt { get; set; }
+}
+
+// Acceso de una persona a una o más sucursales de su empresa.
+public class UsuarioSucursal : TenantEntity
+{
+    public int UsuarioId { get; set; }
+    public int SucursalId { get; set; }
+    public DateTime AsignadoEn { get; set; }
+}
+
+/// <summary>
+/// Áreas de preparación que atiende un usuario. SIN filas = atiende todas, así
+/// el cocinero de un restaurante con una sola cocina no configura nada.
+/// </summary>
+public class UsuarioArea : TenantEntity
+{
+    public int UsuarioId { get; set; }
+    public int AreaId { get; set; }
+    public DateTime AsignadoEn { get; set; }
+}
+
+public class Caja : TenantEntity
+{
+    public int CajaId { get; set; }
+    public int SucursalId { get; set; }
+    public string Nombre { get; set; } = "";
+    public bool Activa { get; set; } = true;
+    public DateTime CreatedAt { get; set; }
+}
+
+public class SesionCaja : TenantEntity
+{
+    public long SesionCajaId { get; set; }
+    public int SucursalId { get; set; }
+    public int CajaId { get; set; }
+    public string Estado { get; set; } = "ABIERTA";
+    public decimal FondoInicial { get; set; }
+    public int AbiertoPor { get; set; }
+    public DateTime AbiertaEn { get; set; }
+    public int? CerradoPor { get; set; }
+    public DateTime? CerradaEn { get; set; }
+    public decimal? EfectivoEsperado { get; set; }
+    public decimal? EfectivoContado { get; set; }
+    public decimal? Diferencia { get; set; }
+    public string? NotaCierre { get; set; }
+}
+
+public class CajaMovimiento : TenantEntity
+{
+    public long CajaMovimientoId { get; set; }
+    public int SucursalId { get; set; }
+    public long SesionCajaId { get; set; }
+    public string Tipo { get; set; } = "";
+    public decimal Monto { get; set; }
+    public string Motivo { get; set; } = "";
+    public string ClaveIdempotencia { get; set; } = "";
+    public int RegistradoPor { get; set; }
+    public DateTime RegistradoEn { get; set; }
 }
 
 // No hereda TenantEntity: el SuperAdmin no tiene empresa (tenant_id NULL).
@@ -219,6 +291,7 @@ public class Bitacora
 {
     public long BitacoraId { get; set; }
     public int? TenantId { get; set; }
+    public int? SucursalId { get; set; }
     public int? UsuarioId { get; set; }
     public string UsuarioNombre { get; set; } = "";
     public int? RolId { get; set; }

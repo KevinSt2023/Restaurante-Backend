@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -125,7 +125,8 @@ public class CacheSesiones
     {
         _cache.Remove(ValidadorSesion.ClaveEmpresa(id));
         // Cambió el plan o su estado: los permisos efectivos se recalculan ya.
-        for (var rol = RolIds.Administrador; rol <= RolIds.Delivery; rol++) _cache.Remove(PermisosEfectivos.Clave(id, rol));
+        _cache.Remove(PermisosEfectivos.Clave(id, RolIds.Administrador));
+        foreach (var rol in RolIds.Operativos) _cache.Remove(PermisosEfectivos.Clave(id, rol));
     }
 }
 

@@ -27,6 +27,11 @@ public class AuthController : BaseController
     [HttpGet("perfil")]
     public async Task<PerfilDto> Perfil() => await _auth.PerfilAsync(UsuarioId);
 
+    // Catálogo de permisos en castellano: lo usa la pantalla de Inicio para explicar
+    // qué puede hacer cada rol sin mostrar códigos crudos.
+    [HttpGet("catalogo-permisos")]
+    public Task<List<PermisoCatalogoDto>> CatalogoPermisos() => _auth.CatalogoPermisosAsync();
+
     [HttpPost("cambiar-password"), EnableRateLimiting("auth")]
     public async Task<SesionDto> CambiarPassword(CambiarPasswordDto dto) => await _auth.CambiarPasswordAsync(UsuarioId, dto);
 }

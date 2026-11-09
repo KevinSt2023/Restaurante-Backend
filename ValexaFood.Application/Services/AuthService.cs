@@ -16,6 +16,9 @@ public record SesionDto(string Token, string RefreshToken, UsuarioSesionDto Usua
     List<string> Funciones, List<int> RolesQueOpera, PlanSesionDto? Plan);
 public record PerfilDto(UsuarioSesionDto Usuario, List<string> Permisos, List<string> Funciones,
     List<int> RolesQueOpera, PlanSesionDto? Plan);
+/// <summary>Un permiso del catálogo, con su nombre en castellano y el módulo al que pertenece.</summary>
+public record PermisoCatalogoDto(string Codigo, string Nombre, string Modulo, string Descripcion,
+    string? FuncionRequerida);
 
 public class AuthService
 {
@@ -162,6 +165,17 @@ public class AuthService
         var p = await _permisos.CalcularAsync(u.RolId, u.TenantId);
         return new PerfilDto(UsuarioDto(u), p.Permisos, p.Funciones, p.RolesQueOpera, PlanDto(u));
     }
+
+    /// <summary>
+    /// Catálogo de permisos en castellano, para que la aplicación muestre qué puede hacer
+    /// cada quien sin repetir los textos en el frontend (donde se desactualizarían).
+    /// Es el mismo para todas las empresas, así que no lleva filtro de tenant.
+    /// </summary>
+    public async Task<List<PermisoCatalogoDto>> CatalogoPermisosAsync() =>
+        await _db.Permisos.AsNoTracking()
+            .OrderBy(p => p.Modulo).ThenBy(p => p.Orden)
+            .Select(p => new PermisoCatalogoDto(p.Codigo, p.Nombre, p.Modulo, p.Descripcion, p.FuncionRequerida))
+            .ToListAsync();
 
     // Sube la versión de sesión (invalida los JWT vigentes) y revoca los refresh.
     public async Task CerrarSesionesAsync(int usuarioId, Usuario? cargado = null)

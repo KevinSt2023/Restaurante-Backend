@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using ValexaFood.Application.Common;
@@ -19,9 +19,15 @@ public record MovimientoDto(int MovimientoId, int TenantId, string Empresa, stri
     string? AnuladoPor, DateTime? FechaAnulacion, bool Anulable);
 public record ResultadoMovimientoDto(MovimientoDto Movimiento, string? Advertencia);
 
+/// <param name="LocalesActivos">Sucursales activas hoy.</param>
+/// <param name="LocalesIncluidos">Las que ya paga el precio base.</param>
+/// <param name="LocalesCobrados">Las que se suman aparte (0 si el plan no vende locales).</param>
+/// <param name="CargoPorLocales">Lo que esos locales suman al total del periodo.</param>
 public record SugerenciaCobroDto(int TenantId, string Empresa, string? PlanNombre, decimal PrecioMensual, decimal? PrecioAnual,
     int Meses, decimal PrecioLista, bool BienvenidaDisponible, decimal DescuentoBienvenidaPct, decimal MontoSugerido,
-    DateOnly? VenceActual, DateOnly VenceraHasta);
+    DateOnly? VenceActual, DateOnly VenceraHasta,
+    int LocalesActivos = 1, int LocalesIncluidos = 1, int LocalesCobrados = 0,
+    decimal PrecioSucursalAdicional = 0, decimal CargoPorLocales = 0);
 
 public record CobranzaDto(int TenantId, string Nombre, string? Ruc, string? Telefono, string? Email, bool Activo,
     int? PlanId, string? PlanNombre, decimal? PrecioMensual, decimal? PrecioAnual, DateOnly? Vencimiento,
@@ -74,18 +80,41 @@ public class SuscripcionService
             ?? throw ReglaNegocioException.NoEncontrado("Empresa");
         if (t.Plan == null) throw new ReglaNegocioException("La empresa no tiene plan asignado.");
         var cfg = await ConfigAsync();
-        var lista = PrecioLista(t.Plan, meses);
+        var locales = await LocalesActivosAsync(tenantId);
+        var extra = LocalesCobrados(t.Plan, locales);
+        var baseLista = PrecioLista(t.Plan, meses, 0);
+        var lista = PrecioLista(t.Plan, meses, extra);
         var bienvenida = !await TuvoPagoAsync(tenantId) && cfg.DescuentoBienvenidaPct > 0;
         // El descuento de bienvenida aplica a la PRIMERA mensualidad, no a todo el periodo.
         var sugerido = bienvenida ? Math.Round(lista - t.Plan.PrecioMensual * cfg.DescuentoBienvenidaPct / 100, 2) : lista;
         var hoy = DiaLima.Hoy();
         var desde = t.PlanFechaVencimiento.HasValue && t.PlanFechaVencimiento.Value > hoy ? t.PlanFechaVencimiento.Value : hoy;
         return new(tenantId, t.NombreComercial, t.Plan.Nombre, t.Plan.PrecioMensual, t.Plan.PrecioAnual, meses, lista,
-            bienvenida, cfg.DescuentoBienvenidaPct, sugerido, t.PlanFechaVencimiento, desde.AddMonths(meses));
+            bienvenida, cfg.DescuentoBienvenidaPct, sugerido, t.PlanFechaVencimiento, desde.AddMonths(meses),
+            locales, Math.Max(t.Plan.MaxSucursales, 1), extra, t.Plan.PrecioSucursalAdicional, lista - baseLista);
     }
 
-    private static decimal PrecioLista(Plan plan, int meses) =>
-        meses == 12 && plan.PrecioAnual.HasValue ? plan.PrecioAnual.Value : plan.PrecioMensual * meses;
+    private Task<int> LocalesActivosAsync(int tenantId) =>
+        _db.Sucursales.IgnoreQueryFilters().CountAsync(s => s.TenantId == tenantId && s.Activo);
+
+    /// <summary>
+    /// Locales que se cobran aparte: los que pasan de los incluidos en el precio
+    /// base. Si el plan no vende locales (precio 0) nunca se cobra ninguno.
+    /// </summary>
+    private static int LocalesCobrados(Plan plan, int activos) =>
+        plan.PrecioSucursalAdicional <= 0 ? 0 : Math.Max(0, activos - Math.Max(plan.MaxSucursales, 1));
+
+    private static decimal PrecioLista(Plan plan, int meses, int localesCobrados)
+    {
+        var anual = meses == 12 && plan.PrecioAnual.HasValue;
+        var baseP = anual ? plan.PrecioAnual!.Value : plan.PrecioMensual * meses;
+        if (localesCobrados <= 0) return baseP;
+        // Si el plan no fijó precio anual por local, el local se cobra por mes.
+        var porLocal = anual
+            ? plan.PrecioSucursalAdicionalAnual ?? plan.PrecioSucursalAdicional * 12
+            : plan.PrecioSucursalAdicional * meses;
+        return baseP + porLocal * localesCobrados;
+    }
 
     // ─── Registrar ───────────────────────────────────────────────────────────
     public async Task<ResultadoMovimientoDto> RegistrarAsync(int tenantId, RegistrarMovimientoDto dto)
@@ -162,7 +191,10 @@ public class SuscripcionService
         // Si ya venció cuenta desde hoy; si no, se extiende desde su vencimiento: no pierde lo pagado.
         var desde = venceAntes.HasValue && venceAntes.Value > hoy ? venceAntes.Value : hoy;
         var venceDespues = desde.AddMonths(dto.Meses);
-        var referencial = PrecioLista(tenant.Plan, dto.Meses);
+        // El referencial que queda grabado incluye los locales que tenía al cobrar:
+        // el movimiento es inmutable y tiene que explicar su propio monto.
+        var referencial = PrecioLista(tenant.Plan, dto.Meses,
+            LocalesCobrados(tenant.Plan, await LocalesActivosAsync(tenant.TenantId)));
         var descuento = tipo == "PAGO" && referencial > 0 && monto < referencial
             ? Math.Round((1 - monto / referencial) * 100, 2) : 0;
 
@@ -366,7 +398,8 @@ public class SuscripcionService
         var excedidas = tenants.Where(t => t.Plan != null && t.Activo && uso.ContainsKey(t.TenantId)).Select(t =>
         {
             var probs = LimitePlan.Problemas(uso[t.TenantId], t.Plan!.MaxSucursales, t.Plan.MaxUsuarios,
-                cupos.Where(c => c.PlanId == t.PlanId).Select(c => (c.RolId, c.Maximo)), roles);
+                cupos.Where(c => c.PlanId == t.PlanId).Select(c => (c.RolId, c.Maximo, c.PorSucursal)), roles,
+                    t.Plan.PrecioSucursalAdicional);
             return probs.Count == 0 ? null : new TableroAlertaDto(t.TenantId, t.NombreComercial, t.Plan.Nombre,
                 t.PlanFechaVencimiento, null, $"Excede su plan: {string.Join("; ", probs)}.");
         }).Where(x => x != null).Select(x => x!).ToList();
