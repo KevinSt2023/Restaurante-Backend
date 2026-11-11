@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using ValexaFood.Application.Services;
 
 namespace ValexaFood.API.Controllers;
@@ -61,6 +61,12 @@ public class CartaController : BaseController
     public Task<DisponibilidadDto> Disponibilidad([FromQuery] int? sucursalId) => _svc.DisponibilidadAsync(sucursalId);
     [HttpPost("disponibilidad"), RequierePermiso("CARTA_DISPONIBILIDAD")]
     public Task<DisponibilidadDto> MarcarAgotado(MarcarAgotadoDto dto) => _svc.MarcarAgotadoAsync(dto);
+
+    // --- Carta QR: la pagina publica de esta sucursal ---
+    [HttpGet("qr"), RequierePermiso("CARTA_QR")]
+    public Task<CartaQrDto> Qr([FromQuery] int? sucursalId) => _svc.QrAsync(sucursalId);
+    [HttpPut("qr"), RequierePermiso("CARTA_QR")]
+    public Task<CartaQrDto> GuardarQr(CartaQrGuardarDto dto, [FromQuery] int? sucursalId) => _svc.GuardarQrAsync(sucursalId, dto);
 
     [HttpGet("menu"), RequierePermiso("CARTA_VER")]
     public Task<MenuDto> Menu([FromQuery] int? sucursalId) => _svc.MenuAsync(sucursalId);

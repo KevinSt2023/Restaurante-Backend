@@ -10,37 +10,70 @@ using ValexaFood.Infrastructure.Sesion;
 
 namespace ValexaFood.Application.Services;
 
-public record InsumoGuardarDto(string? Codigo, string Nombre, string UnidadBase, string UnidadCompra,
-    decimal FactorCompraABase, decimal StockMinimoBase = 0, decimal? StockObjetivoBase = null);
+/// <summary>
+/// Una unidad del catálogo global. No la define la empresa: un kilo es un kilo.
+/// </summary>
+public record UnidadMedidaDto(string Codigo, string Nombre, string Plural, string Abreviatura,
+    string Dimension, string UnidadBase, decimal FactorABase);
+/// <summary>
+/// El factor de conversión NO viaja: lo calcula la base desde la unidad elegida y el
+/// contenido del empaque. Antes se escribía a mano y nada impedía guardar "KG" con
+/// factor 1, que descuenta 50 gramos cuando entró un saco de 50 kilos.
+/// </summary>
+public record InsumoGuardarDto(string? Codigo, string Nombre, string UnidadBase, string UnidadCompraCodigo,
+    string? EmpaqueNombre = null, decimal? EmpaqueContenido = null,
+    decimal StockMinimoBase = 0, decimal? StockObjetivoBase = null);
 public record InsumoDto(int InsumoId, string? Codigo, string Nombre, string UnidadBase, string UnidadCompra,
     decimal FactorCompraABase, decimal CostoPromedioBase, bool CostoConfigurado, decimal StockActualBase, decimal StockMinimoBase,
-    decimal StockObjetivoBase, bool Activo, decimal CantidadEntranteBase, bool BajoMinimo, bool ReposicionRequerida);
+    decimal StockObjetivoBase, bool Activo, decimal CantidadEntranteBase, bool BajoMinimo, bool ReposicionRequerida,
+    string UnidadCompraCodigo = "", string? EmpaqueNombre = null, decimal? EmpaqueContenido = null);
 public record InsumoReposicionDto(decimal StockMinimoBase, decimal StockObjetivoBase);
+public record AlmacenDto(int AlmacenId, int SucursalId, string Nombre, string Tipo, bool EsPrincipal, bool Activo);
+public record AlmacenGuardarDto(string Nombre, string Tipo, bool Activo = true);
+public record StockAlmacenFilaDto(int AlmacenId, string Almacen, string Tipo, bool EsPrincipal, decimal StockActualBase);
+/// <summary>Un insumo y en qué estante de la sucursal está repartido.</summary>
+public record StockPorAlmacenDto(int InsumoId, string Nombre, string UnidadBase,
+    decimal StockSucursalBase, List<StockAlmacenFilaDto> Almacenes);
+public record ReubicacionLineaDto(int InsumoId, decimal CantidadBase);
+public record ReubicacionGuardarDto(int AlmacenOrigenId, int AlmacenDestinoId,
+    List<ReubicacionLineaDto> Insumos, string? Motivo, string? ClaveIdempotencia);
+public record ReubicacionFilaDto(int InsumoId, string NombreInsumo, string UnidadBase, decimal CantidadBase,
+    long MovimientoSalidaId, long MovimientoEntradaId);
+/// <summary>
+/// Pasar insumos de un almacén a otro del MISMO local. Es instantánea: diez metros
+/// no son un viaje, así que no hay estado EN_TRANSITO ni recepción que confirmar.
+/// </summary>
+public record ReubicacionDto(string Referencia, int AlmacenOrigenId, string AlmacenOrigen,
+    int AlmacenDestinoId, string AlmacenDestino, string? Motivo, DateTime RegistradoEn,
+    List<ReubicacionFilaDto> Insumos);
 /// <summary>Un insumo cuya existencia no coincide con la suma de su kardex.</summary>
 public record CuadreInsumoDto(int InsumoId, string Nombre, string UnidadBase, decimal ExistenciaRegistrada,
-    decimal SumaDelKardex, decimal Diferencia, int Movimientos, string Motivo);
+    decimal SumaDelKardex, decimal Diferencia, int Movimientos, string Motivo,
+    int AlmacenId = 0, string Almacen = "");
 public record CuadreInventarioDto(int Insumos, int Movimientos, int Observados, List<CuadreInsumoDto> Detalle);
 public record RecetaInsumoGuardarDto(int InsumoId, decimal CantidadBase, int? VarianteId = null, int? OpcionId = null);
 public record RecetaProductoGuardarDto(List<RecetaInsumoGuardarDto> Insumos);
 public record RecetaProductoDto(long RecetaInsumoId, int ProductoId, int? VarianteId, int? OpcionId,
     int InsumoId, string NombreInsumo, string UnidadBase, decimal CantidadBase);
 public record MovimientoInventarioDto(string Tipo, decimal CantidadCompra, decimal? CostoTotal, string? Motivo,
-    string? Referencia, string? ClaveIdempotencia);
+    string? Referencia, string? ClaveIdempotencia, int? AlmacenId = null);
 public record MovimientoInventarioFilaDto(long MovimientoInsumoId, int InsumoId, string NombreInsumo,
     string UnidadBase, string Tipo, decimal CantidadDeltaBase, decimal CantidadRegistrada,
     string UnidadRegistrada, bool CostoConfigurado, decimal? CostoUnitarioBase, decimal? CostoTotal,
-    string? Motivo, string? Referencia, long? PedidoId, DateTime RegistradoEn);
+    string? Motivo, string? Referencia, long? PedidoId, DateTime RegistradoEn,
+    int AlmacenId = 0, string Almacen = "");
 public record ConteoInsumoGuardarDto(int InsumoId, decimal StockSistemaBase, decimal CantidadContadaBase);
-public record ConteoInventarioGuardarDto(List<ConteoInsumoGuardarDto> Insumos, string? Motivo, string? ClaveIdempotencia);
+public record ConteoInventarioGuardarDto(List<ConteoInsumoGuardarDto> Insumos, string? Motivo,
+    string? ClaveIdempotencia, int? AlmacenId = null);
 public record ConteoInventarioLineaDto(long ConteoInventarioItemId, int InsumoId, string NombreInsumo,
     decimal StockSistemaBase, decimal CantidadContadaBase, decimal DiferenciaBase, string UnidadBase,
     bool CostoConfigurado, decimal? CostoUnitarioBase, decimal? CostoTotalDiferencia, long? MovimientoInsumoId);
 public record ConteoInventarioDto(long ConteoInventarioId, int SucursalId, string Sucursal, string Estado,
     string Motivo, int RegistradoPor, DateTime RegistradoEn, int? AplicadoPor, DateTime? AplicadoEn,
-    List<ConteoInventarioLineaDto> Insumos);
+    List<ConteoInventarioLineaDto> Insumos, int AlmacenId = 0, string Almacen = "");
 public record TrasladoLineaGuardarDto(int InsumoId, decimal CantidadBase);
 public record TrasladoGuardarDto(int SucursalDestinoId, List<TrasladoLineaGuardarDto> Insumos,
-    string? Motivo, string? ClaveIdempotencia);
+    string? Motivo, string? ClaveIdempotencia, int? AlmacenOrigenId = null, int? AlmacenDestinoId = null);
 public record TrasladoRecepcionLineaDto(long TrasladoItemId, decimal CantidadRecibidaBase, string? MotivoDiferencia = null);
 public record TrasladoRecibirDto(string? ClaveIdempotencia, List<TrasladoRecepcionLineaDto>? Insumos = null);
 public record TrasladoLineaDto(long TrasladoItemId, int InsumoId, string NombreInsumo, decimal CantidadBase,
@@ -49,7 +82,8 @@ public record TrasladoLineaDto(long TrasladoItemId, int InsumoId, string NombreI
 public record TrasladoDto(long TrasladoId, int SucursalOrigenId, string SucursalOrigen,
     int SucursalDestinoId, string SucursalDestino, string Estado, string? Motivo,
     int RegistradoPor, DateTime RegistradoEn, int? RecibidoPor, DateTime? RecibidoEn,
-    List<TrasladoLineaDto> Insumos);
+    List<TrasladoLineaDto> Insumos, int AlmacenOrigenId = 0, string AlmacenOrigen = "",
+    int AlmacenDestinoId = 0, string AlmacenDestino = "");
 public record ProductoCostoInsumoDto(int InsumoId, string NombreInsumo, string UnidadBase,
     decimal CantidadBaseConsumida, decimal CostoConocido, int LineasSinCosto);
 public record ProductoCostoRecetaDto(int ProductoId, string Producto, int Unidades, decimal VentaNetaAsignada,
@@ -70,14 +104,14 @@ public record ProveedorInsumoDto(int ProveedorInsumoId, string? Ruc, string Nomb
 public record CompraInsumoLineaGuardarDto(int InsumoId, decimal CantidadCompra, decimal CostoTotal);
 public record RecepcionCompraGuardarDto(int ProveedorInsumoId, string TipoDocumento, string? SerieDocumento,
     string? NumeroDocumento, DateOnly FechaDocumento, List<CompraInsumoLineaGuardarDto> Insumos,
-    string? Motivo, string? ClaveIdempotencia);
+    string? Motivo, string? ClaveIdempotencia, int? AlmacenId = null);
 public record RecepcionCompraLineaDto(long ItemId, int InsumoId, string NombreInsumo, decimal CantidadCompra,
     string UnidadCompra, decimal FactorCompraABase, decimal CantidadBase, decimal CostoUnitarioBase,
     decimal CostoTotal, string UnidadBase, long? MovimientoId);
 public record RecepcionCompraDto(long RecepcionId, int SucursalId, int ProveedorId, string ProveedorNombre,
     string ProveedorRuc, string TipoDocumento, string? SerieDocumento, string? NumeroDocumento,
     DateOnly FechaDocumento, string Estado, decimal TotalInsumos, string? Motivo, int RegistradoPor,
-    DateTime RegistradoEn, List<RecepcionCompraLineaDto> Insumos);
+    DateTime RegistradoEn, List<RecepcionCompraLineaDto> Insumos, int AlmacenId = 0, string Almacen = "");
 
 public class InventarioService
 {
@@ -95,47 +129,55 @@ public class InventarioService
     { _db = db; _sesion = sesion; _bitacora = bitacora; _permisos = permisos; }
 
     /// <summary>
-    /// Auditoría de cuadre del kardex. El stock lo mantiene la aplicación movimiento a
-    /// movimiento, así que la única prueba de que es correcto es esta: la suma de TODOS los
-    /// movimientos de un insumo en una sucursal tiene que dar su existencia actual.
-    /// Devuelve solo lo que no calza. Solo lee.
+    /// Auditoría de cuadre del kardex, ahora POR ALMACÉN. El stock lo mantiene la
+    /// aplicación movimiento a movimiento, así que la única prueba de que es correcto
+    /// es esta: la suma de TODOS los movimientos de un insumo EN UN ALMACÉN tiene que
+    /// dar su existencia ahí. Antes se comprobaba por sucursal, y eso dejaba pasar el
+    /// peor error posible: que el total del local calce mientras la cocina y la cámara
+    /// estén cruzadas entre sí. Devuelve solo lo que no calza. Solo lee.
     /// </summary>
     public async Task<CuadreInventarioDto> CuadreAsync()
     {
-        var existencias = await _db.InsumosSucursal.AsNoTracking()
-            .Where(e => e.SucursalId == Sucursal)
-            .Select(e => new { e.InsumoId, e.StockActualBase })
-            .ToListAsync();
+        var almacenes = await _db.Almacenes.AsNoTracking().Where(a => a.SucursalId == Sucursal)
+            .Select(a => new { a.AlmacenId, a.Nombre }).ToListAsync();
+        var existencias = await (from e in _db.InsumosAlmacen.AsNoTracking()
+            join a in _db.Almacenes.AsNoTracking().Where(x => x.SucursalId == Sucursal)
+                on new { e.TenantId, e.AlmacenId } equals new { a.TenantId, a.AlmacenId }
+            select new { e.AlmacenId, e.InsumoId, e.StockActualBase }).ToListAsync();
         var movimientos = await _db.MovimientosInsumo.AsNoTracking()
             .Where(m => m.SucursalId == Sucursal)
-            .GroupBy(m => m.InsumoId)
-            .Select(g => new { InsumoId = g.Key, Suma = g.Sum(x => x.CantidadDeltaBase), Cuantos = g.Count() })
+            .GroupBy(m => new { m.AlmacenId, m.InsumoId })
+            .Select(g => new { g.Key.AlmacenId, g.Key.InsumoId,
+                Suma = g.Sum(x => x.CantidadDeltaBase), Cuantos = g.Count() })
             .ToListAsync();
         var nombres = await _db.Insumos.AsNoTracking()
             .Select(i => new { i.InsumoId, i.Nombre, i.UnidadBase }).ToListAsync();
 
+        string NombreAlmacen(int id) => almacenes.FirstOrDefault(a => a.AlmacenId == id)?.Nombre ?? $"Almacén {id}";
         var observados = new List<CuadreInsumoDto>();
         foreach (var e in existencias)
         {
-            var k = movimientos.FirstOrDefault(m => m.InsumoId == e.InsumoId);
+            var k = movimientos.FirstOrDefault(m => m.AlmacenId == e.AlmacenId && m.InsumoId == e.InsumoId);
             var suma = k?.Suma ?? 0m;
             if (decimal.Round(suma, 4) == decimal.Round(e.StockActualBase, 4)) continue;
             var n = nombres.FirstOrDefault(x => x.InsumoId == e.InsumoId);
             observados.Add(new CuadreInsumoDto(e.InsumoId, n?.Nombre ?? $"Insumo {e.InsumoId}", n?.UnidadBase ?? "",
                 e.StockActualBase, suma, decimal.Round(e.StockActualBase - suma, 4), k?.Cuantos ?? 0,
-                "La existencia registrada no coincide con la suma de sus movimientos."));
+                "La existencia registrada no coincide con la suma de sus movimientos en este almacén.",
+                e.AlmacenId, NombreAlmacen(e.AlmacenId)));
         }
-        // Movimientos de un insumo que ni siquiera tiene existencia creada en esta sucursal.
-        foreach (var k in movimientos.Where(m => existencias.All(e => e.InsumoId != m.InsumoId)))
+        // Movimientos de un insumo que ni siquiera tiene existencia creada en ese almacén.
+        foreach (var k in movimientos.Where(m => existencias.All(e => e.AlmacenId != m.AlmacenId || e.InsumoId != m.InsumoId)))
         {
             var n = nombres.FirstOrDefault(x => x.InsumoId == k.InsumoId);
             observados.Add(new CuadreInsumoDto(k.InsumoId, n?.Nombre ?? $"Insumo {k.InsumoId}", n?.UnidadBase ?? "",
                 0m, k.Suma, decimal.Round(-k.Suma, 4), k.Cuantos,
-                "Tiene movimientos pero no tiene existencia creada en esta sucursal."));
+                "Tiene movimientos pero no tiene existencia creada en ese almacén.",
+                k.AlmacenId, NombreAlmacen(k.AlmacenId)));
         }
 
         return new CuadreInventarioDto(existencias.Count, movimientos.Sum(m => m.Cuantos),
-            observados.Count, observados.OrderBy(o => o.Nombre).ToList());
+            observados.Count, observados.OrderBy(o => o.Almacen).ThenBy(o => o.Nombre).ToList());
     }
 
     public async Task<List<InsumoDto>> ListarAsync(string? buscar = null)
@@ -159,7 +201,8 @@ public class InventarioService
                     s == null ? 0m : s.StockActualBase,
                     s == null ? 0m : s.StockMinimoBase, s == null ? 0m : s.StockObjetivoBase, i.Activo, 0m,
                     s != null && s.StockMinimoBase > 0 && s.StockActualBase <= s.StockMinimoBase,
-                    s != null && s.StockObjetivoBase > 0 && s.StockActualBase < s.StockObjetivoBase);
+                    s != null && s.StockObjetivoBase > 0 && s.StockActualBase < s.StockObjetivoBase,
+                    i.UnidadCompraCodigo, i.EmpaqueNombre, i.EmpaqueContenido);
         var filas = await q.ToListAsync();
         var entrantes = await (from traslado in _db.TrasladosInsumo.AsNoTracking()
                 .Where(x => x.TenantId == Tenant && x.SucursalDestinoId == Sucursal && x.Estado == "EN_TRANSITO")
@@ -181,19 +224,253 @@ public class InventarioService
         }).ToList();
     }
 
+    /// <summary>
+    /// El catálogo de unidades, para poblar la lista. Es global y de solo lectura:
+    /// la equivalencia kilo→gramo es física, no comercial.
+    /// </summary>
+    public async Task<List<UnidadMedidaDto>> UnidadesAsync() =>
+        await _db.UnidadesMedida.AsNoTracking().Where(u => u.Activo).OrderBy(u => u.Orden)
+            .Select(u => new UnidadMedidaDto(u.Codigo, u.Nombre, u.Plural, u.Abreviatura,
+                u.Dimension, u.UnidadBase, u.FactorABase)).ToListAsync();
+
+    // Almacenes.
+    // Cada sucursal nace con un almacen "Principal" creado por la base (trigger en
+    // scripts/36): una sucursal sin almacen no podria recibir ni consumir nada, asi
+    // que no puede existir ni un instante.
+
+    public async Task<List<AlmacenDto>> AlmacenesAsync(bool incluirInactivos = false)
+    {
+        var q = _db.Almacenes.AsNoTracking().Where(a => a.SucursalId == Sucursal);
+        if (!incluirInactivos) q = q.Where(a => a.Activo);
+        return await q.OrderByDescending(a => a.EsPrincipal).ThenBy(a => a.Nombre)
+            .Select(a => new AlmacenDto(a.AlmacenId, a.SucursalId!.Value, a.Nombre, a.Tipo, a.EsPrincipal, a.Activo))
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Crear o editar un almacen. El Principal no se puede renombrar de tipo ni apagar:
+    /// es el piso del local y la base lo impide con un CHECK. Abrir el SEGUNDO almacen
+    /// es lo que se vende (funcion ALMACENES del plan); el primero lo tiene todo el mundo.
+    /// </summary>
+    public async Task<List<AlmacenDto>> GuardarAlmacenAsync(int? id, AlmacenGuardarDto dto)
+    {
+        var nombre = Texto.Requerido(dto.Nombre, "Nombre", 60);
+        var tipo = (dto.Tipo ?? "").Trim().ToUpperInvariant();
+        if (!TiposAlmacen.Todos.Contains(tipo)) throw new ReglaNegocioException("Elige un tipo de almacen de la lista.");
+        if (tipo == TiposAlmacen.Principal) throw new ReglaNegocioException("El almacen Principal lo crea el sistema y no se duplica.");
+
+        await EnTransaccionAsync(async () =>
+        {
+            Almacen item;
+            if (id.HasValue)
+            {
+                item = await _db.Almacenes.FirstOrDefaultAsync(a => a.AlmacenId == id && a.SucursalId == Sucursal)
+                    ?? throw ReglaNegocioException.NoEncontrado("Almacen");
+                if (item.EsPrincipal)
+                    throw new ReglaNegocioException("El almacen Principal no se renombra ni se apaga: es el destino por omision del local.");
+                // Apagar un almacen con existencias esconderia stock que si esta ahi.
+                if (!dto.Activo && await _db.InsumosAlmacen.AnyAsync(e => e.AlmacenId == item.AlmacenId && e.StockActualBase != 0))
+                    throw new ReglaNegocioException("Este almacen todavia tiene existencias. Reubicalas antes de apagarlo.");
+                item.Nombre = nombre; item.Tipo = tipo; item.Activo = dto.Activo;
+                item.ActualizadoEn = DateTime.UtcNow;
+            }
+            else
+            {
+                var efectivos = await _permisos.DeSesionAsync(_sesion.RolId, Tenant);
+                if (!efectivos.Funciones.Contains("ALMACENES"))
+                    throw new ReglaNegocioException("Tu plan incluye un almacen por local. Abrir cocina, barra o deposito aparte requiere subir de plan.", 403);
+                item = new Almacen { TenantId = Tenant, SucursalId = Sucursal, Nombre = nombre, Tipo = tipo,
+                    EsPrincipal = false, Activo = dto.Activo, CreadoEn = DateTime.UtcNow, ActualizadoEn = DateTime.UtcNow };
+                _db.Almacenes.Add(item);
+            }
+            await _db.SaveChangesAsync();
+            await _bitacora.AgregarAsync(Tenant, id.HasValue ? "ALMACEN_ACTUALIZADO" : "ALMACEN_CREADO",
+                "Almacen", item.AlmacenId, $"Almacen {nombre} ({tipo}) en sucursal {Sucursal}.");
+            await _db.SaveChangesAsync();
+            return item.AlmacenId;
+        });
+        return await AlmacenesAsync(true);
+    }
+
+    /// <summary>Que hay en cada estante. Es la pregunta que el sistema no sabia contestar.</summary>
+    public async Task<List<StockPorAlmacenDto>> StockPorAlmacenAsync(int? insumoId = null, bool soloConStock = false)
+    {
+        var almacenes = await _db.Almacenes.AsNoTracking().Where(a => a.SucursalId == Sucursal)
+            .OrderByDescending(a => a.EsPrincipal).ThenBy(a => a.Nombre)
+            .Select(a => new { a.AlmacenId, a.Nombre, a.Tipo, a.EsPrincipal, a.Activo }).ToListAsync();
+        var ids = almacenes.Select(a => a.AlmacenId).ToList();
+        var insumosQ = _db.Insumos.AsNoTracking().Where(i => i.Activo);
+        if (insumoId.HasValue) insumosQ = insumosQ.Where(i => i.InsumoId == insumoId);
+        var insumos = await insumosQ.OrderBy(i => i.Nombre)
+            .Select(i => new { i.InsumoId, i.Nombre, i.UnidadBase }).ToListAsync();
+        var filas = await _db.InsumosAlmacen.AsNoTracking().Where(e => ids.Contains(e.AlmacenId))
+            .Select(e => new { e.AlmacenId, e.InsumoId, e.StockActualBase }).ToListAsync();
+
+        var salida = new List<StockPorAlmacenDto>();
+        foreach (var i in insumos)
+        {
+            var suyas = filas.Where(f => f.InsumoId == i.InsumoId).ToList();
+            var total = suyas.Sum(f => f.StockActualBase);
+            if (soloConStock && total == 0) continue;
+            salida.Add(new StockPorAlmacenDto(i.InsumoId, i.Nombre, i.UnidadBase, total,
+                almacenes.Where(a => a.Activo || suyas.Any(f => f.AlmacenId == a.AlmacenId && f.StockActualBase != 0))
+                    .Select(a => new StockAlmacenFilaDto(a.AlmacenId, a.Nombre, a.Tipo, a.EsPrincipal,
+                        suyas.FirstOrDefault(f => f.AlmacenId == a.AlmacenId)?.StockActualBase ?? 0m)).ToList()));
+        }
+        return salida;
+    }
+
+    /// <summary>
+    /// Reubicar insumos entre almacenes del MISMO local: dos movimientos de kardex con
+    /// la misma referencia, aplicados en el acto. No hay EN_TRANSITO porque dentro de un
+    /// local nada viaja, y no hay costo nuevo porque el insumo no cambio de valor: solo
+    /// de estante. El costo promedio es de la sucursal y no se toca.
+    /// </summary>
+    public async Task<ReubicacionDto> ReubicarAsync(ReubicacionGuardarDto dto)
+    {
+        if (dto is null || dto.Insumos is null || dto.Insumos.Count == 0)
+            throw new ReglaNegocioException("Indica al menos un insumo para reubicar.");
+        if (dto.Insumos.Count > 50) throw new ReglaNegocioException("Reubica hasta 50 insumos por operacion.");
+        if (dto.AlmacenOrigenId == dto.AlmacenDestinoId)
+            throw new ReglaNegocioException("El origen y el destino tienen que ser almacenes distintos.");
+        var lineas = dto.Insumos.GroupBy(x => x.InsumoId).Select(g => g.First()).ToList();
+        if (lineas.Count != dto.Insumos.Count) throw new ReglaNegocioException("Hay insumos repetidos en la reubicacion.");
+        if (lineas.Any(x => x.InsumoId <= 0 || x.CantidadBase <= 0 || x.CantidadBase > MaxBase
+                || decimal.Round(x.CantidadBase, 4) != x.CantidadBase))
+            throw new ReglaNegocioException("Cada cantidad debe ser positiva y tener hasta cuatro decimales.");
+        var clave = NormalizarClave(dto.ClaveIdempotencia, "Envia una clave de idempotencia valida.");
+        var motivo = Texto.Opcional(dto.Motivo, "Motivo", 300);
+        var referencia = $"Reubicacion {clave[..8]}";
+
+        return await EnTransaccionAsync(async () =>
+        {
+            var origen = await AlmacenDeAsync(dto.AlmacenOrigenId);
+            var destino = await AlmacenDeAsync(dto.AlmacenDestinoId);
+            var ahora = DateTime.UtcNow;
+
+            // Si la misma clave ya se uso, se devuelve lo de antes en vez de mover dos veces.
+            var previos = await _db.MovimientosInsumo.AsNoTracking()
+                .Where(m => m.SucursalId == Sucursal && m.Referencia == referencia).ToListAsync();
+            if (previos.Count > 0)
+            {
+                if (previos.Count != lineas.Count * 2 || previos.Any(p => p.AlmacenId != origen.AlmacenId && p.AlmacenId != destino.AlmacenId))
+                    throw new ReglaNegocioException("La clave de reubicacion ya se uso con datos distintos.", 409);
+                return ArmarReubicacion(referencia, origen, destino, motivo, previos);
+            }
+
+            var movimientos = new List<MovimientoInsumo>();
+            foreach (var linea in lineas.OrderBy(x => x.InsumoId))
+            {
+                var insumo = await _db.Insumos.FirstOrDefaultAsync(x => x.InsumoId == linea.InsumoId && x.Activo)
+                    ?? throw ReglaNegocioException.NoEncontrado("Insumo");
+                var salida = await AsegurarExistenciaBloqueadaAsync(origen.AlmacenId, linea.InsumoId);
+                var entrada = await AsegurarExistenciaBloqueadaAsync(destino.AlmacenId, linea.InsumoId);
+                if (salida.StockActualBase < linea.CantidadBase)
+                    throw new ReglaNegocioException($"{insumo.Nombre}: {origen.Nombre} tiene {salida.StockActualBase:0.####} {insumo.UnidadBase} y pides {linea.CantidadBase:0.####}.");
+                if (entrada.StockActualBase + linea.CantidadBase > MaxBase)
+                    throw new ReglaNegocioException("El stock resultante supera el rango permitido.");
+                salida.StockActualBase -= linea.CantidadBase; salida.ActualizadoEn = ahora;
+                entrada.StockActualBase += linea.CantidadBase; entrada.ActualizadoEn = ahora;
+
+                var stockSucursal = await AsegurarStockBloqueadoAsync(linea.InsumoId);
+                var costo = stockSucursal.CostoPromedioConfigurado ? stockSucursal.CostoPromedioBase : (decimal?)null;
+                foreach (var paso in new[] {
+                    (Almacen: origen.AlmacenId, Delta: -linea.CantidadBase, Tipo: "REUBICACION_SALIDA"),
+                    (Almacen: destino.AlmacenId, Delta: linea.CantidadBase, Tipo: "REUBICACION_ENTRADA") })
+                {
+                    var mov = new MovimientoInsumo { TenantId = Tenant, SucursalId = Sucursal, AlmacenId = paso.Almacen,
+                        InsumoId = linea.InsumoId, Tipo = paso.Tipo, CantidadDeltaBase = paso.Delta,
+                        CostoUnitarioBase = costo, CostoTotal = costo.HasValue
+                            ? decimal.Round(linea.CantidadBase * costo.Value, 4, MidpointRounding.AwayFromZero) : null,
+                        CostoConfigurado = costo.HasValue,
+                        CantidadRegistrada = linea.CantidadBase, UnidadRegistradaSnapshot = insumo.UnidadBase,
+                        NombreInsumoSnapshot = insumo.Nombre, UnidadBaseSnapshot = insumo.UnidadBase,
+                        Motivo = motivo, Referencia = referencia,
+                        ClaveIdempotencia = $"{clave[..16]}{(paso.Tipo == "REUBICACION_SALIDA" ? "S" : "E")}{linea.InsumoId:X15}",
+                        RegistradoPor = Usuario, RegistradoEn = ahora };
+                    _db.MovimientosInsumo.Add(mov);
+                    movimientos.Add(mov);
+                }
+            }
+            await _bitacora.AgregarAsync(Tenant, "INVENTARIO_REUBICACION", "Almacen", destino.AlmacenId,
+                $"{lineas.Count} insumo(s) de {origen.Nombre} a {destino.Nombre}.");
+            await _db.SaveChangesAsync();
+            return ArmarReubicacion(referencia, origen, destino, motivo, movimientos);
+        });
+    }
+
+    private static ReubicacionDto ArmarReubicacion(string referencia, Almacen origen, Almacen destino,
+        string? motivo, List<MovimientoInsumo> movimientos)
+    {
+        var filas = movimientos.Where(m => m.Tipo == "REUBICACION_SALIDA").Select(salida =>
+        {
+            var entrada = movimientos.First(m => m.Tipo == "REUBICACION_ENTRADA" && m.InsumoId == salida.InsumoId);
+            return new ReubicacionFilaDto(salida.InsumoId, salida.NombreInsumoSnapshot, salida.UnidadBaseSnapshot,
+                Math.Abs(salida.CantidadDeltaBase), salida.MovimientoInsumoId, entrada.MovimientoInsumoId);
+        }).OrderBy(x => x.NombreInsumo).ToList();
+        return new ReubicacionDto(referencia, origen.AlmacenId, origen.Nombre, destino.AlmacenId, destino.Nombre,
+            motivo, movimientos.Min(m => m.RegistradoEn), filas);
+    }
+
+    /// <summary>
+    /// Resuelve el almacen de una operacion. Sin eleccion explicita va al Principal, que es
+    /// lo que mantiene funcionando todo lo escrito antes de que existieran los almacenes.
+    /// </summary>
+    private async Task<Almacen> AlmacenDeAsync(int? almacenId, int? sucursalId = null)
+    {
+        var suc = sucursalId ?? Sucursal;
+        if (almacenId is null or 0)
+            return await _db.Almacenes.FirstOrDefaultAsync(a => a.SucursalId == suc && a.EsPrincipal)
+                ?? throw new ReglaNegocioException("Esta sucursal no tiene almacen principal.", 409);
+        return await _db.Almacenes.FirstOrDefaultAsync(a => a.AlmacenId == almacenId && a.SucursalId == suc && a.Activo)
+            ?? throw ReglaNegocioException.NoEncontrado("Almacen");
+    }
+
+    /// <summary>
+    /// La existencia de un insumo en un almacen, bloqueada. ES EL UNICO SITIO donde se
+    /// escribe stock: el total de la sucursal lo recalcula un trigger de la base.
+    /// </summary>
+    private async Task<InsumoAlmacen> AsegurarExistenciaBloqueadaAsync(int almacenId, int insumoId)
+    {
+        await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO insumo_almacen(tenant_id,almacen_id,insumo_id) VALUES ({Tenant},{almacenId},{insumoId})
+            ON CONFLICT (tenant_id,almacen_id,insumo_id) DO NOTHING
+            """);
+        var filas = await _db.InsumosAlmacen.FromSqlInterpolated($"""
+            SELECT * FROM insumo_almacen WHERE tenant_id={Tenant} AND almacen_id={almacenId} AND insumo_id={insumoId} FOR UPDATE
+            """).IgnoreQueryFilters().ToListAsync();
+        return filas.Single();
+    }
+
     public async Task<InsumoDto> GuardarInsumoAsync(int? id, InsumoGuardarDto dto)
     {
         var codigo = Texto.Opcional(dto.Codigo, "Código", 40);
         var nombre = Texto.Requerido(dto.Nombre, "Nombre", 120);
         var unidadBase = (dto.UnidadBase ?? "").Trim().ToUpperInvariant();
-        var unidadCompra = (dto.UnidadCompra ?? "").Trim().ToUpperInvariant();
-        if (!UnidadesInventario.Todos.Contains(unidadBase) || unidadCompra.Length is < 1 or > 12)
-            throw new ReglaNegocioException("Selecciona una unidad base válida y una unidad de compra de hasta 12 caracteres.");
-        if (dto.FactorCompraABase <= 0 || dto.FactorCompraABase > MaxCostoBase || decimal.Round(dto.FactorCompraABase, 6) != dto.FactorCompraABase
-            || dto.StockMinimoBase < 0 || dto.StockMinimoBase > MaxBase || decimal.Round(dto.StockMinimoBase, 4) != dto.StockMinimoBase
+        var unidadCompraCodigo = (dto.UnidadCompraCodigo ?? "").Trim().ToUpperInvariant();
+        if (!UnidadesInventario.Todos.Contains(unidadBase))
+            throw new ReglaNegocioException("Selecciona una unidad base válida.");
+        // La unidad se elige de la lista, y tiene que medir lo mismo que la unidad base:
+        // nadie compra leche en gramos. La base lo vuelve a comprobar en su trigger.
+        var unidad = await _db.UnidadesMedida.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Codigo == unidadCompraCodigo && u.Activo)
+            ?? throw new ReglaNegocioException("Elige una unidad de compra de la lista.");
+        if (unidad.UnidadBase != unidadBase)
+            throw new ReglaNegocioException($"{unidad.Nombre} no mide lo mismo que la unidad base del insumo.");
+        // El empaque es lo único de la conversión que es de la empresa: "Saco" de 50 KG.
+        var empaqueNombre = Texto.Opcional(dto.EmpaqueNombre, "Empaque", 24)?.ToUpperInvariant();
+        var empaqueContenido = dto.EmpaqueContenido;
+        if ((empaqueNombre is null) != (empaqueContenido is null))
+            throw new ReglaNegocioException("Un empaque necesita nombre y contenido, o ninguno de los dos.");
+        if (empaqueContenido.HasValue && (empaqueContenido <= 0 || empaqueContenido > MaxBase
+            || decimal.Round(empaqueContenido.Value, 4) != empaqueContenido.Value))
+            throw new ReglaNegocioException("El contenido del empaque debe ser positivo, con hasta 4 decimales.");
+        if (decimal.Round((empaqueContenido ?? 1m) * unidad.FactorABase, 6) > MaxCostoBase)
+            throw new ReglaNegocioException("El empaque convertido a la unidad base excede el máximo admitido.");
+        if (dto.StockMinimoBase < 0 || dto.StockMinimoBase > MaxBase || decimal.Round(dto.StockMinimoBase, 4) != dto.StockMinimoBase
             || dto.StockObjetivoBase.HasValue && (dto.StockObjetivoBase < dto.StockMinimoBase
                 || dto.StockObjetivoBase > MaxBase || decimal.Round(dto.StockObjetivoBase.Value, 4) != dto.StockObjetivoBase.Value))
-            throw new ReglaNegocioException("El factor debe ser positivo; el mínimo no puede ser negativo y el objetivo debe ser igual o mayor al mínimo.");
+            throw new ReglaNegocioException("El mínimo no puede ser negativo y el objetivo debe ser igual o mayor al mínimo.");
         var idGuardado = await EnTransaccionAsync(async () =>
         {
             Insumo item;
@@ -206,13 +483,15 @@ public class InventarioService
                 if ((tieneReceta || tieneMovimiento) && item.UnidadBase != unidadBase)
                     throw new ReglaNegocioException("La unidad base no se puede cambiar después de usar el insumo en recetas o movimientos.");
                 item.Codigo = codigo; item.Nombre = nombre; item.UnidadBase = unidadBase;
-                item.UnidadCompra = unidadCompra; item.FactorCompraABase = dto.FactorCompraABase;
+                item.UnidadCompraCodigo = unidadCompraCodigo;
+                item.EmpaqueNombre = empaqueNombre; item.EmpaqueContenido = empaqueContenido;
                 item.ActualizadoEn = DateTime.UtcNow;
             }
             else
             {
                 item = new Insumo { TenantId = Tenant, Codigo = codigo, Nombre = nombre, UnidadBase = unidadBase,
-                    UnidadCompra = unidadCompra, FactorCompraABase = dto.FactorCompraABase, CreadoEn = DateTime.UtcNow, ActualizadoEn = DateTime.UtcNow };
+                    UnidadCompraCodigo = unidadCompraCodigo, EmpaqueNombre = empaqueNombre,
+                    EmpaqueContenido = empaqueContenido, CreadoEn = DateTime.UtcNow, ActualizadoEn = DateTime.UtcNow };
                 _db.Insumos.Add(item);
                 await _db.SaveChangesAsync();
             }
@@ -323,24 +602,19 @@ public class InventarioService
                 throw new ReglaNegocioException("La clave de movimiento ya se usó con datos distintos.");
             return MovimientoMap(previo);
         }
-        var existencia = await AsegurarStockBloqueadoAsync(insumoId);
-        if (existencia.StockActualBase + delta is > MaxBase or < -MaxBase)
+        var almacen = await AlmacenDeAsync(dto.AlmacenId);
+        var existenciaAlmacen = await AsegurarExistenciaBloqueadaAsync(almacen.AlmacenId, insumoId);
+        if (existenciaAlmacen.StockActualBase + delta is > MaxBase or < -MaxBase)
             throw new ReglaNegocioException("El stock resultante supera el rango permitido.");
-        if (tipo == "COMPRA")
-        {
-            var existenciaValorizada = existencia.StockActualBase > 0 ? existencia.StockActualBase : 0m;
-            var stockAntes = existenciaValorizada;
-            var nuevoStock = stockAntes + deltaAbs;
-            existencia.CostoPromedioBase = nuevoStock == 0 ? 0 : decimal.Round((stockAntes * existencia.CostoPromedioBase + dto.CostoTotal!.Value) / nuevoStock, 6, MidpointRounding.AwayFromZero);
-            existencia.CostoPromedioConfigurado = true;
-        }
-        var costoUnitarioSnapshot = tipo == "COMPRA" ? costoUnitario
-            : existencia.CostoPromedioConfigurado ? existencia.CostoPromedioBase : (decimal?)null;
-        existencia.StockActualBase += delta;
-        existencia.ActualizadoEn = DateTime.UtcNow;
-        var mov = new MovimientoInsumo { TenantId = Tenant, SucursalId = Sucursal, InsumoId = insumoId, Tipo = tipo,
+        // El costo promedio sigue siendo de la sucursal entera: se compra para el local.
+        var existencia = await AsegurarStockBloqueadoAsync(insumoId);
+        var costoUnitarioSnapshot = existencia.CostoPromedioConfigurado ? existencia.CostoPromedioBase : (decimal?)null;
+        existenciaAlmacen.StockActualBase += delta;
+        existenciaAlmacen.ActualizadoEn = DateTime.UtcNow;
+        var mov = new MovimientoInsumo { TenantId = Tenant, SucursalId = Sucursal, AlmacenId = almacen.AlmacenId,
+            InsumoId = insumoId, Tipo = tipo,
             CantidadDeltaBase = delta, CostoUnitarioBase = costoUnitarioSnapshot, CostoTotal = dto.CostoTotal,
-            CostoConfigurado = tipo == "COMPRA" || existencia.CostoPromedioConfigurado,
+            CostoConfigurado = existencia.CostoPromedioConfigurado,
             CantidadRegistrada = cantidad, UnidadRegistradaSnapshot = insumo.UnidadCompra,
             NombreInsumoSnapshot = insumo.Nombre, UnidadBaseSnapshot = insumo.UnidadBase,
             Motivo = motivo, Referencia = referencia,
@@ -358,7 +632,10 @@ public class InventarioService
         var q = _db.MovimientosInsumo.AsNoTracking().Where(x => x.SucursalId == Sucursal);
         if (insumoId.HasValue) q = q.Where(x => x.InsumoId == insumoId);
         if (antesDe.HasValue) q = q.Where(x => x.MovimientoInsumoId < antesDe.Value);
-        return (await q.OrderByDescending(x => x.MovimientoInsumoId).Take(limite).ToListAsync()).Select(MovimientoMap).ToList();
+        var filas = await q.OrderByDescending(x => x.MovimientoInsumoId).Take(limite).ToListAsync();
+        var nombres = await _db.Almacenes.AsNoTracking().Where(a => a.SucursalId == Sucursal)
+            .ToDictionaryAsync(a => a.AlmacenId, a => a.Nombre);
+        return filas.Select(x => MovimientoMap(x, nombres.GetValueOrDefault(x.AlmacenId, ""))).ToList();
     }
 
     public async Task<List<ProveedorInsumoDto>> ProveedoresAsync(string? buscar = null)
@@ -454,7 +731,8 @@ public class InventarioService
                         .IgnoreQueryFilters().SingleOrDefaultAsync() ?? throw ReglaNegocioException.NoEncontrado("Insumo");
                     articulos.Add(linea.InsumoId, articulo);
                 }
-                var cabecera = new RecepcionCompraInsumo { TenantId = Tenant, SucursalId = Sucursal,
+                var almacen = await AlmacenDeAsync(dto.AlmacenId);
+                var cabecera = new RecepcionCompraInsumo { TenantId = Tenant, SucursalId = Sucursal, AlmacenId = almacen.AlmacenId,
                     ProveedorInsumoId = proveedor.ProveedorInsumoId, ProveedorRucSnapshot = proveedor.Ruc ?? "",
                     ProveedorNombreSnapshot = proveedor.Nombre, TipoDocumento = tipo, SerieDocumento = serie, NumeroDocumento = numero,
                     FechaDocumento = dto.FechaDocumento, TotalInsumos = total, ClaveIdempotencia = clave,
@@ -478,13 +756,17 @@ public class InventarioService
                 await _db.SaveChangesAsync();
                 foreach (var (item, articulo) in preparados)
                 {
+                    // El costo promedio pondera sobre el stock de TODA la sucursal: se compra
+                    // para el local, no para el estante. El stock fisico entra al almacen elegido.
                     var existencia = await AsegurarStockBloqueadoAsync(item.InsumoId);
                     if (existencia.StockActualBase + item.CantidadBase > MaxBase) throw new ReglaNegocioException("El stock resultante supera el rango permitido.");
                     var anterior = Math.Max(0, existencia.StockActualBase);
                     var nuevo = anterior + item.CantidadBase;
                     existencia.CostoPromedioBase = decimal.Round((anterior * existencia.CostoPromedioBase + item.CostoTotal) / nuevo, 6, MidpointRounding.AwayFromZero);
-                    existencia.CostoPromedioConfigurado = true; existencia.StockActualBase += item.CantidadBase; existencia.ActualizadoEn = DateTime.UtcNow;
-                    _db.MovimientosInsumo.Add(new MovimientoInsumo { TenantId = Tenant, SucursalId = Sucursal, InsumoId = item.InsumoId,
+                    existencia.CostoPromedioConfigurado = true; existencia.ActualizadoEn = DateTime.UtcNow;
+                    var existenciaAlmacen = await AsegurarExistenciaBloqueadaAsync(almacen.AlmacenId, item.InsumoId);
+                    existenciaAlmacen.StockActualBase += item.CantidadBase; existenciaAlmacen.ActualizadoEn = DateTime.UtcNow;
+                    _db.MovimientosInsumo.Add(new MovimientoInsumo { TenantId = Tenant, SucursalId = Sucursal, AlmacenId = almacen.AlmacenId, InsumoId = item.InsumoId,
                         Tipo = "COMPRA", CantidadDeltaBase = item.CantidadBase, CostoUnitarioBase = item.CostoUnitarioBase, CostoTotal = item.CostoTotal,
                         CostoConfigurado = true, CantidadRegistrada = item.CantidadCompra, UnidadRegistradaSnapshot = item.UnidadCompraSnapshot,
                         NombreInsumoSnapshot = item.NombreInsumoSnapshot, UnidadBaseSnapshot = item.UnidadBaseSnapshot,
@@ -523,6 +805,8 @@ public class InventarioService
     {
         if (recepciones.Count == 0) return [];
         var ids = recepciones.Select(x => x.RecepcionCompraInsumoId).ToList();
+        var almacenesR = await _db.Almacenes.AsNoTracking().Where(a => recepciones.Select(r => r.AlmacenId).Contains(a.AlmacenId))
+            .ToDictionaryAsync(a => a.AlmacenId, a => a.Nombre);
         var items = await _db.RecepcionesCompraInsumoItems.AsNoTracking().Where(x => ids.Contains(x.RecepcionCompraInsumoId)).OrderBy(x => x.RecepcionCompraInsumoItemId).ToListAsync();
         var movimientos = await _db.MovimientosInsumo.AsNoTracking().Where(x => x.RecepcionCompraInsumoId.HasValue && ids.Contains(x.RecepcionCompraInsumoId.Value))
             .ToDictionaryAsync(x => x.RecepcionCompraInsumoItemId!.Value, x => x.MovimientoInsumoId);
@@ -533,7 +817,8 @@ public class InventarioService
         return recepciones.Select(r => new RecepcionCompraDto(r.RecepcionCompraInsumoId, r.SucursalId, r.ProveedorInsumoId,
             r.ProveedorNombreSnapshot, r.ProveedorRucSnapshot, r.TipoDocumento, r.SerieDocumento, r.NumeroDocumento,
             r.FechaDocumento, r.Estado, r.TotalInsumos, r.Motivo, r.RegistradoPor, r.RegistradoEn,
-            porId.GetValueOrDefault(r.RecepcionCompraInsumoId, []))).ToList();
+            porId.GetValueOrDefault(r.RecepcionCompraInsumoId, []),
+            r.AlmacenId, almacenesR.GetValueOrDefault(r.AlmacenId, ""))).ToList();
     }
 
     public async Task<List<ConteoInventarioDto>> ConteosAsync(int limite = 50, long? antesDe = null)
@@ -574,13 +859,16 @@ public class InventarioService
         {
             var conteoId = await EnTransaccionAsync(async () =>
             {
-                var filas = new Dictionary<int, (InsumoSucursal Stock, Insumo Insumo)>();
+                var almacen = await AlmacenDeAsync(dto.AlmacenId);
+                // El stock que se compara es el del almacen contado; el costo es de la sucursal.
+                var filas = new Dictionary<int, (InsumoAlmacen Existencia, InsumoSucursal Costo, Insumo Insumo)>();
                 foreach (var linea in lineas)
                 {
-                    var stock = await AsegurarStockBloqueadoAsync(linea.InsumoId);
+                    var existencia = await AsegurarExistenciaBloqueadaAsync(almacen.AlmacenId, linea.InsumoId);
+                    var costo = await AsegurarStockBloqueadoAsync(linea.InsumoId);
                     var insumo = await _db.Insumos.FirstOrDefaultAsync(x => x.InsumoId == linea.InsumoId && x.Activo)
                         ?? throw ReglaNegocioException.NoEncontrado("Insumo");
-                    filas.Add(linea.InsumoId, (stock, insumo));
+                    filas.Add(linea.InsumoId, (existencia, costo, insumo));
                 }
 
                 // A retry behind the first count must replay before evaluating its now-changed stock.
@@ -595,14 +883,14 @@ public class InventarioService
 
                 foreach (var linea in lineas)
                 {
-                    var (stock, _) = filas[linea.InsumoId];
-                    if (stock.StockActualBase != linea.StockSistemaBase)
+                    var (existencia, costo, _) = filas[linea.InsumoId];
+                    if (existencia.StockActualBase != linea.StockSistemaBase)
                         throw new ReglaNegocioException("El stock cambió desde que cargaste el conteo. Actualiza la pantalla y vuelve a contar.", 409);
                     var diferencia = linea.CantidadContadaBase - linea.StockSistemaBase;
                     if (Math.Abs(diferencia) > MaxBase)
                         throw new ReglaNegocioException("La diferencia del conteo supera el rango admitido.");
-                    if (stock.CostoPromedioBase > MaxCostoBase
-                        || (stock.CostoPromedioConfigurado && decimal.Round(Math.Abs(diferencia) * stock.CostoPromedioBase, 4,
+                    if (costo.CostoPromedioBase > MaxCostoBase
+                        || (costo.CostoPromedioConfigurado && decimal.Round(Math.Abs(diferencia) * costo.CostoPromedioBase, 4,
                             MidpointRounding.AwayFromZero) > MaxBase))
                         throw new ReglaNegocioException("El costo de la diferencia supera el rango admitido.");
                 }
@@ -610,16 +898,16 @@ public class InventarioService
                 var ahora = DateTime.UtcNow;
                 var conteo = new ConteoInventario
                 {
-                    TenantId = Tenant, SucursalId = Sucursal, Estado = "ABIERTO", ClaveIdempotencia = clave,
-                    HuellaSolicitud = huella, Motivo = motivo, RegistradoPor = Usuario, RegistradoEn = ahora
+                    TenantId = Tenant, SucursalId = Sucursal, AlmacenId = almacen.AlmacenId, Estado = "ABIERTO",
+                    ClaveIdempotencia = clave, HuellaSolicitud = huella, Motivo = motivo, RegistradoPor = Usuario, RegistradoEn = ahora
                 };
                 _db.ConteosInventario.Add(conteo);
                 await _db.SaveChangesAsync();
                 var items = lineas.Select(linea =>
                 {
-                    var (stock, insumo) = filas[linea.InsumoId];
+                    var (_, costoFila, insumo) = filas[linea.InsumoId];
                     var diferencia = linea.CantidadContadaBase - linea.StockSistemaBase;
-                    var costo = stock.CostoPromedioConfigurado ? stock.CostoPromedioBase : (decimal?)null;
+                    var costo = costoFila.CostoPromedioConfigurado ? costoFila.CostoPromedioBase : (decimal?)null;
                     return new ConteoInventarioItem
                     {
                         TenantId = Tenant, ConteoInventarioId = conteo.ConteoInventarioId, InsumoId = insumo.InsumoId,
@@ -635,13 +923,13 @@ public class InventarioService
 
                 foreach (var item in items)
                 {
-                    var (stock, _) = filas[item.InsumoId];
-                    stock.StockActualBase = item.CantidadContadaBase;
-                    stock.ActualizadoEn = ahora;
+                    var (existencia, _, _) = filas[item.InsumoId];
+                    existencia.StockActualBase = item.CantidadContadaBase;
+                    existencia.ActualizadoEn = ahora;
                     if (item.DiferenciaBase == 0) continue;
                     _db.MovimientosInsumo.Add(new MovimientoInsumo
                     {
-                        TenantId = Tenant, SucursalId = Sucursal, InsumoId = item.InsumoId,
+                        TenantId = Tenant, SucursalId = Sucursal, AlmacenId = almacen.AlmacenId, InsumoId = item.InsumoId,
                         Tipo = item.DiferenciaBase > 0 ? "AJUSTE_ENTRADA" : "AJUSTE_SALIDA",
                         CantidadDeltaBase = item.DiferenciaBase, CostoUnitarioBase = item.CostoUnitarioBase,
                         CostoTotal = item.CostoTotalDiferencia, CostoConfigurado = item.CostoConfigurado,
@@ -694,6 +982,9 @@ public class InventarioService
         var sucursalIds = conteos.Select(x => x.SucursalId).Distinct().ToList();
         var sucursales = await _db.Sucursales.AsNoTracking().Where(x => sucursalIds.Contains(x.SucursalId))
             .ToDictionaryAsync(x => x.SucursalId, x => x.Nombre);
+        var almacenIds = conteos.Select(x => x.AlmacenId).Distinct().ToList();
+        var almacenes = await _db.Almacenes.AsNoTracking().Where(a => almacenIds.Contains(a.AlmacenId))
+            .ToDictionaryAsync(a => a.AlmacenId, a => a.Nombre);
         var items = await _db.ConteosInventarioItems.AsNoTracking().Where(x => ids.Contains(x.ConteoInventarioId))
             .OrderBy(x => x.ConteoInventarioItemId).ToListAsync();
         var movimientos = await _db.MovimientosInsumo.AsNoTracking()
@@ -709,7 +1000,8 @@ public class InventarioService
         return conteos.Select(x => new ConteoInventarioDto(x.ConteoInventarioId, x.SucursalId,
             sucursales.GetValueOrDefault(x.SucursalId, "Sucursal"), x.Estado, x.Motivo,
             x.RegistradoPor, x.RegistradoEn, x.AplicadoPor, x.AplicadoEn,
-            porConteo.GetValueOrDefault(x.ConteoInventarioId, []))).ToList();
+            porConteo.GetValueOrDefault(x.ConteoInventarioId, []),
+            x.AlmacenId, almacenes.GetValueOrDefault(x.AlmacenId, ""))).ToList();
     }
 
     public async Task<List<TrasladoDto>> TrasladosAsync(int limite = 100, long? antesDe = null)
@@ -762,13 +1054,16 @@ public class InventarioService
         {
             return await EnTransaccionAsync(async () =>
             {
-                var stocks = new Dictionary<int, (InsumoSucursal Stock, Insumo Insumo)>();
+                var almacenOrigen = await AlmacenDeAsync(dto.AlmacenOrigenId);
+                var almacenDestino = await AlmacenDeAsync(dto.AlmacenDestinoId, sucursalDestino.SucursalId);
+                var stocks = new Dictionary<int, (InsumoAlmacen Existencia, InsumoSucursal Costo, Insumo Insumo)>();
                 foreach (var linea in lineas)
                 {
-                    var stock = await AsegurarStockBloqueadoAsync(linea.InsumoId);
+                    var existencia = await AsegurarExistenciaBloqueadaAsync(almacenOrigen.AlmacenId, linea.InsumoId);
+                    var costo = await AsegurarStockBloqueadoAsync(linea.InsumoId);
                     var insumo = await _db.Insumos.FirstOrDefaultAsync(x => x.InsumoId == linea.InsumoId && x.Activo)
                         ?? throw ReglaNegocioException.NoEncontrado("Insumo");
-                    stocks.Add(linea.InsumoId, (stock, insumo));
+                    stocks.Add(linea.InsumoId, (existencia, costo, insumo));
                 }
 
                 // A retry that waited behind the first request must replay its result
@@ -779,13 +1074,13 @@ public class InventarioService
 
                 foreach (var linea in lineas)
                 {
-                    var (stock, insumo) = stocks[linea.InsumoId];
-                    if (stock.StockActualBase < linea.CantidadBase)
-                        throw new ReglaNegocioException($"Stock insuficiente de {insumo.Nombre} en la sucursal origen.", 409);
-                    if (!stock.CostoPromedioConfigurado)
+                    var (existencia, costo, insumo) = stocks[linea.InsumoId];
+                    if (existencia.StockActualBase < linea.CantidadBase)
+                        throw new ReglaNegocioException($"Stock insuficiente de {insumo.Nombre} en {almacenOrigen.Nombre}.", 409);
+                    if (!costo.CostoPromedioConfigurado)
                         throw new ReglaNegocioException($"Registra primero el costo de {insumo.Nombre} en la sucursal origen.", 409);
-                    if (stock.CostoPromedioBase > MaxCostoBase
-                        || decimal.Round(linea.CantidadBase * stock.CostoPromedioBase, 4, MidpointRounding.AwayFromZero) > MaxBase)
+                    if (costo.CostoPromedioBase > MaxCostoBase
+                        || decimal.Round(linea.CantidadBase * costo.CostoPromedioBase, 4, MidpointRounding.AwayFromZero) > MaxBase)
                         throw new ReglaNegocioException($"El costo del traslado de {insumo.Nombre} supera el rango permitido.");
                 }
 
@@ -793,6 +1088,7 @@ public class InventarioService
                 var traslado = new TrasladoInsumo
                 {
                     TenantId = Tenant, SucursalOrigenId = Sucursal, SucursalDestinoId = sucursalDestino.SucursalId,
+                    AlmacenOrigenId = almacenOrigen.AlmacenId, AlmacenDestinoId = almacenDestino.AlmacenId,
                     Estado = "EN_TRANSITO", ClaveIdempotencia = clave, HuellaSolicitud = huella,
                     Motivo = motivo, RegistradoPor = Usuario, RegistradoEn = ahora
                 };
@@ -800,12 +1096,12 @@ public class InventarioService
                 await _db.SaveChangesAsync();
                 var items = lineas.Select(linea =>
                 {
-                    var (stock, insumo) = stocks[linea.InsumoId];
+                    var (_, costo, insumo) = stocks[linea.InsumoId];
                     return new TrasladoInsumoItem
                     {
                         TenantId = Tenant, TrasladoId = traslado.TrasladoId, InsumoId = insumo.InsumoId,
-                        CantidadBase = linea.CantidadBase, CostoUnitarioBase = stock.CostoPromedioBase,
-                        CostoTotal = decimal.Round(linea.CantidadBase * stock.CostoPromedioBase, 4, MidpointRounding.AwayFromZero),
+                        CantidadBase = linea.CantidadBase, CostoUnitarioBase = costo.CostoPromedioBase,
+                        CostoTotal = decimal.Round(linea.CantidadBase * costo.CostoPromedioBase, 4, MidpointRounding.AwayFromZero),
                         NombreInsumoSnapshot = insumo.Nombre, UnidadBaseSnapshot = insumo.UnidadBase
                     };
                 }).ToList();
@@ -814,12 +1110,12 @@ public class InventarioService
 
                 foreach (var item in items)
                 {
-                    var (stock, _) = stocks[item.InsumoId];
-                    stock.StockActualBase -= item.CantidadBase;
-                    stock.ActualizadoEn = ahora;
+                    var (existencia, _, _) = stocks[item.InsumoId];
+                    existencia.StockActualBase -= item.CantidadBase;
+                    existencia.ActualizadoEn = ahora;
                     _db.MovimientosInsumo.Add(new MovimientoInsumo
                     {
-                        TenantId = Tenant, SucursalId = Sucursal, InsumoId = item.InsumoId,
+                        TenantId = Tenant, SucursalId = Sucursal, AlmacenId = almacenOrigen.AlmacenId, InsumoId = item.InsumoId,
                         Tipo = "TRANSFERENCIA_SALIDA", CantidadDeltaBase = -item.CantidadBase,
                         CostoUnitarioBase = item.CostoUnitarioBase, CostoTotal = item.CostoTotal,
                         CostoConfigurado = true, CantidadRegistrada = item.CantidadBase,
@@ -888,21 +1184,23 @@ public class InventarioService
                 }
 
                 var ahora = DateTime.UtcNow;
+                // El stock entra al almacen de destino; el costo promedio es de la sucursal.
                 foreach (var linea in solicitudRecepcion.Where(x => x.CantidadRecibidaBase > 0).OrderBy(x => x.TrasladoItemId))
                 {
                     var item = itemsPorId[linea.TrasladoItemId];
-                    var stock = await AsegurarStockBloqueadoAsync(item.InsumoId);
-                    var stockPositivo = Math.Max(stock.StockActualBase, 0m);
+                    var costo = await AsegurarStockBloqueadoAsync(item.InsumoId);
+                    var existencia = await AsegurarExistenciaBloqueadaAsync(traslado.AlmacenDestinoId, item.InsumoId);
+                    var stockPositivo = Math.Max(costo.StockActualBase, 0m);
                     var nuevoStockValorizado = stockPositivo + linea.CantidadRecibidaBase;
-                    if (stock.StockActualBase + linea.CantidadRecibidaBase > MaxBase
+                    if (existencia.StockActualBase + linea.CantidadRecibidaBase > MaxBase
                         || nuevoStockValorizado > MaxBase || item.CostoUnitarioBase > MaxCostoBase)
                         throw new ReglaNegocioException("El stock o costo recibido supera el rango permitido.");
-                    stock.CostoPromedioBase = decimal.Round((stockPositivo * stock.CostoPromedioBase
+                    costo.CostoPromedioBase = decimal.Round((stockPositivo * costo.CostoPromedioBase
                         + linea.CantidadRecibidaBase * item.CostoUnitarioBase) / nuevoStockValorizado,
                         6, MidpointRounding.AwayFromZero);
-                    stock.CostoPromedioConfigurado = true;
-                    stock.StockActualBase += linea.CantidadRecibidaBase;
-                    stock.ActualizadoEn = ahora;
+                    costo.CostoPromedioConfigurado = true;
+                    existencia.StockActualBase += linea.CantidadRecibidaBase;
+                    existencia.ActualizadoEn = ahora;
                 }
 
                 _db.TrasladosInsumoRecepcionItems.AddRange(solicitudRecepcion.Select(x =>
@@ -919,7 +1217,7 @@ public class InventarioService
                     var item = itemsPorId[linea.TrasladoItemId];
                     _db.MovimientosInsumo.Add(new MovimientoInsumo
                     {
-                        TenantId = Tenant, SucursalId = Sucursal, InsumoId = item.InsumoId,
+                        TenantId = Tenant, SucursalId = Sucursal, AlmacenId = traslado.AlmacenDestinoId, InsumoId = item.InsumoId,
                         Tipo = "TRANSFERENCIA_ENTRADA", CantidadDeltaBase = linea.CantidadRecibidaBase,
                         CostoUnitarioBase = item.CostoUnitarioBase,
                         CostoTotal = decimal.Round(linea.CantidadRecibidaBase * item.CostoUnitarioBase, 4, MidpointRounding.AwayFromZero),
@@ -1149,21 +1447,25 @@ public class InventarioService
                     consumo[r.InsumoId] = consumo.GetValueOrDefault(r.InsumoId) + cantidad;
                 }
             }
+            var almacenVenta = await _db.Almacenes
+                .FirstOrDefaultAsync(a => a.SucursalId == pedido.SucursalId && a.EsPrincipal)
+                ?? throw new ReglaNegocioException("La sucursal del pedido no tiene almacén principal.", 409);
             foreach (var (insumoId, cantidad) in consumo)
             {
                 var key = $"venta-{item.PedidoItemId}-{insumoId}";
                 if (await _db.MovimientosInsumo.AnyAsync(m => m.SucursalId == pedido.SucursalId && m.ClaveIdempotencia == key)) continue;
                 var stock = await AsegurarStockBloqueadoAsync(insumoId);
+                var existencia = await AsegurarExistenciaBloqueadaAsync(almacenVenta.AlmacenId, insumoId);
                 var insumo = await _db.Insumos.FirstAsync(i => i.InsumoId == insumoId);
-                if (cantidad <= 0 || cantidad > MaxBase || stock.StockActualBase - cantidad is > MaxBase or < -MaxBase)
+                if (cantidad <= 0 || cantidad > MaxBase || existencia.StockActualBase - cantidad is > MaxBase or < -MaxBase)
                     throw new ReglaNegocioException("La receta o el stock resultante supera el rango permitido.");
                 var costoConfigurado = stock.CostoPromedioConfigurado;
                 var costoTotal = costoConfigurado ? decimal.Round(cantidad * stock.CostoPromedioBase, 4, MidpointRounding.AwayFromZero) : (decimal?)null;
                 if (costoTotal > MaxBase || (costoConfigurado && stock.CostoPromedioBase > MaxCostoBase))
                     throw new ReglaNegocioException("El costo valorizado del consumo supera el rango permitido.");
-                stock.StockActualBase -= cantidad; stock.ActualizadoEn = DateTime.UtcNow;
+                existencia.StockActualBase -= cantidad; existencia.ActualizadoEn = DateTime.UtcNow;
                 _db.MovimientosInsumo.Add(new MovimientoInsumo { TenantId = Tenant, SucursalId = pedido.SucursalId,
-                    InsumoId = insumoId, Tipo = "CONSUMO_VENTA", CantidadDeltaBase = -cantidad,
+                    AlmacenId = almacenVenta.AlmacenId, InsumoId = insumoId, Tipo = "CONSUMO_VENTA", CantidadDeltaBase = -cantidad,
                     CostoUnitarioBase = costoConfigurado ? stock.CostoPromedioBase : null, CostoTotal = costoTotal,
                     CostoConfigurado = costoConfigurado,
                     CantidadRegistrada = cantidad, UnidadRegistradaSnapshot = insumo.UnidadBase,
@@ -1219,11 +1521,16 @@ public class InventarioService
                 cantidadRecibida, recibida == null ? 0 : x.CantidadBase - recibida.CantidadRecibidaBase,
                 recibida?.MotivoDiferencia, x.UnidadBaseSnapshot, x.CostoUnitarioBase, x.CostoTotal);
         }).ToList());
+        var almacenIdsT = traslados.SelectMany(x => new[] { x.AlmacenOrigenId, x.AlmacenDestinoId }).Distinct().ToList();
+        var almacenesT = await _db.Almacenes.AsNoTracking().Where(a => almacenIdsT.Contains(a.AlmacenId))
+            .ToDictionaryAsync(a => a.AlmacenId, a => a.Nombre);
         return traslados.Select(x => new TrasladoDto(x.TrasladoId, x.SucursalOrigenId,
             sucursales.GetValueOrDefault(x.SucursalOrigenId, "Sucursal"), x.SucursalDestinoId,
             sucursales.GetValueOrDefault(x.SucursalDestinoId, "Sucursal"), x.Estado, x.Motivo,
             x.RegistradoPor, x.RegistradoEn, x.RecibidoPor, x.RecibidoEn,
-            itemsPorTraslado.GetValueOrDefault(x.TrasladoId, []))).ToList();
+            itemsPorTraslado.GetValueOrDefault(x.TrasladoId, []),
+            x.AlmacenOrigenId, almacenesT.GetValueOrDefault(x.AlmacenOrigenId, ""),
+            x.AlmacenDestinoId, almacenesT.GetValueOrDefault(x.AlmacenDestinoId, ""))).ToList();
     }
 
     private static List<TrasladoRecepcionLineaDto> NormalizarRecepcion(
@@ -1264,8 +1571,8 @@ public class InventarioService
         return resultado!;
     }
 
-    private static MovimientoInventarioFilaDto MovimientoMap(MovimientoInsumo x) => new(x.MovimientoInsumoId,
+    private static MovimientoInventarioFilaDto MovimientoMap(MovimientoInsumo x, string almacen = "") => new(x.MovimientoInsumoId,
         x.InsumoId, x.NombreInsumoSnapshot, x.UnidadBaseSnapshot, x.Tipo, x.CantidadDeltaBase,
         x.CantidadRegistrada, x.UnidadRegistradaSnapshot, x.CostoConfigurado, x.CostoUnitarioBase,
-        x.CostoTotal, x.Motivo, x.Referencia, x.PedidoId, x.RegistradoEn);
+        x.CostoTotal, x.Motivo, x.Referencia, x.PedidoId, x.RegistradoEn, x.AlmacenId, almacen);
 }

@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -76,6 +76,7 @@ public class CartaService
     private readonly PermisosEfectivos _permisos;
     private readonly BitacoraService _bitacora;
     private readonly string _rutaArchivos;
+    private readonly string _urlPublica;
     // Renombres pendientes: se aplican en la 2.ª fase del guardado (ver GuardarPorPartesAsync).
     private readonly List<Action> _nombresFinales = [];
 
@@ -86,6 +87,7 @@ public class CartaService
         _permisos = permisos;
         _bitacora = bitacora;
         _rutaArchivos = config["Archivos:Ruta"] ?? Path.Combine(AppContext.BaseDirectory, "archivos");
+        _urlPublica = (config["Carta:UrlPublica"] ?? "https://valexafood.pe").TrimEnd('/');
     }
 
     private int Tenant => _sesion.TenantId ?? throw new ReglaNegocioException("Sesión sin empresa.", 403);
@@ -762,6 +764,46 @@ public class CartaService
                 g.Items.OrderBy(p => p.Orden).ThenBy(p => p.Nombre).Select(Mapear).ToList())).ToList();
         return new MenuDto(sid, nombre, combos, categorias);
     }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // CARTA QR — la página pública de esta sucursal
+    // ═════════════════════════════════════════════════════════════════════════
+    public async Task<CartaQrDto> QrAsync(int? sucursalId)
+    {
+        var (sid, _) = await SucursalDeTrabajoAsync(sucursalId);
+        return Qr(await _db.Sucursales.AsNoTracking().FirstAsync(x => x.SucursalId == sid));
+    }
+
+    public async Task<CartaQrDto> GuardarQrAsync(int? sucursalId, CartaQrGuardarDto dto)
+    {
+        var (sid, nombre) = await SucursalDeTrabajoAsync(sucursalId);
+        var s = await _db.Sucursales.FirstAsync(x => x.SucursalId == sid);
+        var tenia = s.CartaCodigo;
+        // Encenderla por primera vez crea el código. Regenerar mata el anterior
+        // a propósito: los QR ya impresos dejan de funcionar, que es justo lo
+        // que se quiere cuando alguien pide regenerar.
+        if (dto.Regenerar || (dto.Activa && s.CartaCodigo == null))
+            s.CartaCodigo = CartaPublicaService.NuevoCodigo();
+        // Apagarla NO borra el código: volver a encenderla no debería invalidar
+        // los QR que ya están pegados en las mesas.
+        s.CartaPublica = dto.Activa;
+        await _db.SaveChangesAsync();
+
+        var accion = dto.Regenerar ? "CARTA_QR_REGENERADA" : dto.Activa ? "CARTA_QR_PUBLICADA" : "CARTA_QR_APAGADA";
+        var detalle = dto.Regenerar
+            ? $"{nombre}: código nuevo, los QR impresos antes dejan de funcionar."
+            : dto.Activa
+                ? $"{nombre}: carta pública encendida{(tenia == null ? " por primera vez" : "")}."
+                : $"{nombre}: carta pública apagada.";
+        await _bitacora.AgregarAsync(Tenant, accion, "Sucursal", sid, detalle);
+        await _db.SaveChangesAsync();
+        return Qr(s);
+    }
+
+    private CartaQrDto Qr(Sucursal s) => s.CartaCodigo == null
+        ? new CartaQrDto(false, null, null, null)
+        : new CartaQrDto(s.CartaPublica, s.CartaCodigo, $"{_urlPublica}/m/{s.CartaCodigo}",
+            CartaPublicaService.SvgDe($"{_urlPublica}/m/{s.CartaCodigo}"));
 
     // ═════════════════════════════════════════════════════════════════════════
     // AUXILIARES

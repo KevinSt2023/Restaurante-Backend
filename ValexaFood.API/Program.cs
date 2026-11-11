@@ -93,6 +93,7 @@ builder.Services.AddScoped<EmpresaService>();
 builder.Services.AddScoped<SaludService>();
 builder.Services.AddScoped<CatalogoService>();
 builder.Services.AddScoped<CartaService>();
+builder.Services.AddScoped<CartaPublicaService>();
 builder.Services.AddScoped<ContextoSucursalService>();
 builder.Services.AddScoped<CajaService>();
 builder.Services.AddScoped<InventarioService>();
@@ -145,6 +146,12 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ctx.Connection.RemoteIpAddress?.ToString() ?? "?",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+    // Carta publica: una mesa entera escanea a la vez y el wifi del local sale
+    // por una sola IP, asi que el limite es alto. No protege el codigo (71 bits
+    // no se adivinan): evita que alguien use la carta como barra libre.
+    o.AddPolicy("publico", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.Connection.RemoteIpAddress?.ToString() ?? "?",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1) }));
 });
 
 builder.Services.AddControllers()

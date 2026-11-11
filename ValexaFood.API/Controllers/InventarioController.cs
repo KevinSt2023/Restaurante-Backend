@@ -13,6 +13,11 @@ public class InventarioController : BaseController
     [HttpGet("cuadre"), RequierePermiso("INVENTARIO_VER", "INVENTARIO_GESTIONAR")]
     public Task<CuadreInventarioDto> Cuadre() => _svc.CuadreAsync();
 
+    // La lista de unidades con la que se arma el formulario del insumo. Es un catálogo
+    // global: el factor de conversión ya no se escribe a mano en ningún lado.
+    [HttpGet("unidades"), RequierePermiso("INVENTARIO_VER", "INVENTARIO_GESTIONAR")]
+    public Task<List<UnidadMedidaDto>> Unidades() => _svc.UnidadesAsync();
+
     [HttpGet("insumos"), RequierePermiso("INVENTARIO_VER", "INVENTARIO_GESTIONAR")]
     public Task<List<InsumoDto>> Insumos([FromQuery] string? buscar) => _svc.ListarAsync(buscar);
 
@@ -51,6 +56,24 @@ public class InventarioController : BaseController
 
     [HttpPost("compras"), RequierePermiso("INVENTARIO_GESTIONAR")]
     public Task<RecepcionCompraDto> RegistrarCompra(RecepcionCompraGuardarDto dto) => _svc.RegistrarRecepcionCompraAsync(dto);
+
+    // ── Almacenes: donde esta cada insumo dentro del local ──
+    [HttpGet("almacenes"), RequierePermiso("INVENTARIO_VER", "INVENTARIO_GESTIONAR")]
+    public Task<List<AlmacenDto>> Almacenes([FromQuery] bool incluirInactivos = false)
+        => _svc.AlmacenesAsync(incluirInactivos);
+
+    [HttpPost("almacenes"), RequierePermiso("INVENTARIO_GESTIONAR")]
+    public Task<List<AlmacenDto>> CrearAlmacen(AlmacenGuardarDto dto) => _svc.GuardarAlmacenAsync(null, dto);
+
+    [HttpPut("almacenes/{id:int}"), RequierePermiso("INVENTARIO_GESTIONAR")]
+    public Task<List<AlmacenDto>> EditarAlmacen(int id, AlmacenGuardarDto dto) => _svc.GuardarAlmacenAsync(id, dto);
+
+    [HttpGet("stock-almacenes"), RequierePermiso("INVENTARIO_VER", "INVENTARIO_GESTIONAR")]
+    public Task<List<StockPorAlmacenDto>> StockPorAlmacen([FromQuery] int? insumoId = null, [FromQuery] bool soloConStock = false)
+        => _svc.StockPorAlmacenAsync(insumoId, soloConStock);
+
+    [HttpPost("reubicaciones"), RequierePermiso("INVENTARIO_GESTIONAR")]
+    public Task<ReubicacionDto> Reubicar(ReubicacionGuardarDto dto) => _svc.ReubicarAsync(dto);
 
     [HttpGet("conteos"), RequierePermiso("INVENTARIO_VER", "INVENTARIO_GESTIONAR")]
     public Task<List<ConteoInventarioDto>> Conteos([FromQuery] int limite = 50, [FromQuery] long? antesDe = null)

@@ -148,6 +148,14 @@ public class Sucursal : TenantEntity
     public bool EsPrincipal { get; set; }
     public bool Activo { get; set; } = true;
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// Codigo opaco de la carta publica (12 caracteres). Nulo mientras nadie la
+    /// haya encendido nunca. No es el id: /m/7 invitaria a probar /m/8.
+    /// </summary>
+    public string? CartaCodigo { get; set; }
+    /// <summary>La carta publica esta encendida. Nace apagada, a proposito.</summary>
+    public bool CartaPublica { get; set; }
 }
 
 // Acceso de una persona a una o más sucursales de su empresa.

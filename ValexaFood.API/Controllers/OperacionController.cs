@@ -37,6 +37,10 @@ public class OperacionController : BaseController
     public Task<PedidoDetalleDto> Detalle(long id) => _svc.DetalleAsync(id);
     [HttpPost("pedidos/{id:long}/enviar"), RequierePermiso("PEDIDO_TOMAR")]
     public Task<PedidoDetalleDto> Enviar(long id) => _svc.EnviarACocinaAsync(id);
+    // Llevar el plato a la mesa es trabajo de salón, no de cocina. Antes exigía
+    // COCINA_MARCAR y el mesero recibía 403 por entregar lo que él mismo sirve.
+    [HttpPost("pedidos/{id:long}/entregar"), RequierePermiso("PEDIDO_ENTREGAR")]
+    public Task<PedidoDetalleDto> Entregar(long id, EntregaMesaDto dto) => _svc.EntregarAsync(id, dto);
     [HttpPost("pedidos/{id:long}/anular-borrador"), RequierePermiso("PEDIDO_TOMAR")]
     public Task<PedidoDetalleDto> AnularBorrador(long id) => _svc.AnularBorradorAsync(id);
     [HttpPost("pedidos/{id:long}/cobrar"), RequierePermiso("COBRAR")]

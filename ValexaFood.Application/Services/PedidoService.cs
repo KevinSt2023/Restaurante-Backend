@@ -58,6 +58,8 @@ public record PedidoDetalleDto(long PedidoId, int? MesaId, string Canal, string 
 public record ComandaCocinaDto(long ComandaId, long PedidoId, int AreaId, string Area, string Estado,
     DateTime EnviadaEn, string? Mesa, string Canal, List<PedidoItemDto> Items, TrabajoImpresionDto? Impresion = null);
 public record EstadoComandaDto(string Estado);
+/// <summary>Sin líneas, entrega todo lo que esté listo en esa mesa.</summary>
+public record EntregaMesaDto(List<long>? ItemIds = null);
 public record TrabajoImpresionDto(long TrabajoImpresionId, long ComandaId, string Estado, int Intentos,
     string? UltimoError, DateTime CreadoEn, JsonElement Payload);
 public record TrabajoImpresionEventoDto(string Tipo, string? Detalle, int? RegistradoPor, DateTime RegistradoEn);
@@ -1014,6 +1016,60 @@ public class PedidoService
         pedido.Estado = otras ? "EN_PREPARACION" : "LISTO";
         await _db.SaveChangesAsync();
         return await CocinaAsync();
+    }
+
+    /// <summary>
+    /// El mesero cierra el circuito desde la mesa: lo que cocina dejó LISTO, él
+    /// lo lleva. Plato por plato —de cuatro platos casi nunca salen los cuatro
+    /// juntos— o todo lo listo de una. La comanda se cierra sola cuando ya no le
+    /// queda nada por entregar, así que la pantalla de cocina se limpia sin que
+    /// el cocinero vuelva a tocarla.
+    /// </summary>
+    public async Task<PedidoDetalleDto> EntregarAsync(long pedidoId, EntregaMesaDto dto)
+    {
+        return await EnTransaccionAsync(async () =>
+        {
+            var pedido = await BloquearPedidoAsync(pedidoId) ?? throw ReglaNegocioException.NoEncontrado("Pedido");
+            if (pedido.Estado == "ANULADO") throw new ReglaNegocioException("El pedido está anulado.");
+            var filtro = dto.ItemIds?.Where(x => x > 0).Distinct().ToList();
+            var items = await _db.PedidoItems
+                .Where(i => i.PedidoId == pedidoId && i.SucursalId == Sucursal && i.Estado == "LISTO").ToListAsync();
+            if (filtro is { Count: > 0 }) items = items.Where(i => filtro.Contains(i.PedidoItemId)).ToList();
+            if (items.Count == 0) throw new ReglaNegocioException("No hay nada listo para entregar en esta mesa.");
+
+            var ids = items.Select(i => i.PedidoItemId).ToList();
+            var componentes = await _db.ComandaItems
+                .Where(c => c.SucursalId == Sucursal && ids.Contains(c.PedidoItemId) && c.Estado != "ANULADO").ToListAsync();
+            foreach (var i in items) i.Estado = "ENTREGADO";
+            foreach (var c in componentes) c.Estado = "ENTREGADO";
+            await _db.SaveChangesAsync();
+
+            // Una comanda está entregada cuando no le queda ninguna línea viva sin
+            // entregar: ni plato directo ni componente de combo.
+            var comandas = items.Where(i => i.ComandaId != null).Select(i => i.ComandaId!.Value)
+                .Concat(componentes.Select(c => c.ComandaId)).Distinct().ToList();
+            foreach (var comandaId in comandas)
+            {
+                if (await _db.PedidoItems.AnyAsync(i => i.ComandaId == comandaId && i.SucursalId == Sucursal
+                        && i.Estado != "ANULADO" && i.Estado != "ENTREGADO")) continue;
+                if (await _db.ComandaItems.AnyAsync(c => c.ComandaId == comandaId && c.SucursalId == Sucursal
+                        && c.Estado != "ANULADO" && c.Estado != "ENTREGADO")) continue;
+                var comanda = await _db.Comandas.FirstAsync(x => x.ComandaId == comandaId && x.SucursalId == Sucursal);
+                comanda.Estado = "ENTREGADA";
+            }
+            // Entregar no cobra: la cuenta sigue abierta y la mesa puede pedir más.
+            if (pedido.Estado is "EN_PREPARACION" or "LISTO")
+            {
+                var otras = await _db.Comandas.AnyAsync(x => x.PedidoId == pedidoId && x.SucursalId == Sucursal
+                    && x.Estado != "LISTA" && x.Estado != "ENTREGADA");
+                pedido.Estado = otras ? "EN_PREPARACION" : "LISTO";
+            }
+            await _db.SaveChangesAsync();
+            await _bitacora.AgregarAsync(Tenant, "PEDIDO_ENTREGADO", "Pedido", pedidoId,
+                $"{items.Count} línea(s) entregadas a la mesa en el pedido #{pedidoId}.");
+            await _db.SaveChangesAsync();
+            return await DetalleAsync(pedidoId);
+        });
     }
 
     public async Task<PagoDto> CobrarAsync(long pedidoId, PagoNuevoDto dto)
